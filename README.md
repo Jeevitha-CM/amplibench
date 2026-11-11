@@ -1,198 +1,186 @@
-\# AmpliBench
+# AmpliBench
 
+### Interactive In Silico PCR & Gel Electrophoresis
 
+**A virtual molecular biology laboratory for PCR experimentation and DNA visualization.**
 
-\*\*An interactive \*in silico\* PCR and gel electrophoresis bench\*\*
+AmpliBench is an interactive scientific application designed to bring PCR experimentation and agarose gel electrophoresis into a computational environment.
 
+Combining an interactive 3D laboratory, configurable PCR workflows, amplification simulation, and gel visualization, AmpliBench provides a virtual environment for exploring molecular biology experiments without consuming laboratory reagents.
 
+---
 
-\*\*Try it:\*\* \_live demo link coming soon\_
+## Live Application
 
+**[Launch AmpliBench →](https://amplibench.onrender.com)**
 
+Access the interactive virtual laboratory directly through your browser.
 
-AmpliBench lets you plan a PCR and see the likely result on an agarose gel before you spend reagents in the lab. Add your template and primers, set up the reactions, run them on a virtual thermocycler and load the products on a simulated gel. It shows where primers bind, which products form, when off-target bands or primer dimers appear, and what the gel would look like.
+---
 
+## Overview
 
+AmpliBench integrates experimental configuration, computational simulation, and scientific visualization into a unified laboratory experience.
 
-It has two views of the same experiment:
+### Key Capabilities
 
+| Module | Description |
+|---|---|
+| PCR Configuration | Prepare reaction setups, configure templates and primers, and evaluate reaction conditions. |
+| Primer Analysis | Explore primer characteristics and reaction-dependent parameters. |
+| Virtual Thermocycler | Configure and visualize conventional and gradient PCR workflows. |
+| Amplification Simulation | Explore computational amplification outcomes and potential products. |
+| Gel Electrophoresis | Simulate DNA migration and visualize electrophoretic band patterns. |
+| 3D Workbench | Interact with a virtual laboratory through a guided experimental workflow. |
+| Scientific Export | Export simulated products and gel visualizations for further analysis. |
 
+---
 
-\- \*\*3D Lab\*\*: a guided virtual bench. Pipette each tube, load the thermocycler, run the PCR, then load, run and image the gel. Made for learning and teaching.
+## Interface Preview
 
-\- \*\*Classic Workbench\*\*: the same experiment as clear, numbered forms and tables, with no animation. Made for quick planning and checking primers.
+### Virtual Laboratory
 
+![AmpliBench 3D Workbench](docs/screenshots/bench_pipetting.png)
 
+### Gel Visualization
 
-> AmpliBench is a teaching and planning tool. Its results are rule-based simulations of primer binding and gel migration, not guarantees of wet-lab outcomes. Always confirm with a real experiment.
+![AmpliBench Simulated Gel](docs/screenshots/gel_result.png)
 
+---
 
+## Features
 
-!\[3D Lab](docs/screenshots/bench\_pipetting.png)
+### Reaction Preparation
+- FASTA template support, including multi-FASTA.
+- Primer pair configuration.
+- Flexible reaction preparation workflows.
+- Master mix and manual reagent configuration.
+- Automated reaction volume and concentration calculations.
+- Reaction composition validation.
 
-!\[Simulated gel](docs/screenshots/gel\_result.png)
+### PCR Simulation
+- Computational exploration of primer-dependent amplification.
+- Visualization of potential amplification products.
+- Reaction controls and simulated experimental outcomes.
+- Product sequence generation and export.
 
+### Thermocycling
+- Programmable PCR cycling conditions.
+- Conventional and gradient PCR workflows.
+- Interactive thermocycler visualization.
+- Configurable experimental parameters.
 
+### Gel Electrophoresis
+- Customizable agarose gel conditions.
+- DNA ladder selection and configuration.
+- Sample loading and electrophoresis simulation.
+- Visualization of DNA fragment migration.
+- Adjustable run conditions and gel rendering.
 
-\## How to use
+### Interactive 3D Workbench
+- Virtual pipetting and reaction preparation.
+- PCR block loading and thermocycler visualization.
+- Well-by-well gel loading.
+- Electrophoresis and gel imaging.
+- Experimental modification and result re-visualization.
 
+### Export & Visualization
+- Gel images in PNG and SVG formats.
+- Simulated PCR products in FASTA format.
 
+---
 
-1\. \*\*Open AmpliBench\*\* and choose \*\*3D Lab\*\* or \*\*Classic Workbench\*\*. You can switch at any time; your experiment stays the same.
+## Getting Started
 
-2\. \*\*Add templates\*\*: upload or paste FASTA, or press \*\*Load demo data\*\* to explore with a ready-made example.
+### Online Access
 
-3\. \*\*Enter primer pairs\*\* (5' to 3'). AmpliBench shows each primer's Tm and a suggested annealing temperature.
+**[Open AmpliBench →](https://amplibench.onrender.com)**
 
-4\. \*\*Set up the reactions\*\*: 2X master mix or individual components, reaction volume, primer amount (pmol) and template amount (ng). Water is calculated for you.
+### Local Development
 
-5\. \*\*Fill the tubes\*\* (up to 11). Leave out the template in one tube for a no-template control (NTC).
+**Requirements:** Python 3.10 or newer.
 
-6\. \*\*Program the thermocycler\*\*: conventional, or gradient to test several annealing temperatures at once.
+```bash
+git clone https://github.com/Jeevitha-CM/amplibench.git
+cd amplibench
 
-7\. \*\*Run the PCR and the gel\*\*: choose agarose %, run time and ladder. Change gel settings afterwards and the gel redraws instantly.
+python -m pip install -r requirements.txt
+```
 
-8\. \*\*Keep your work\*\*: download the gel image or product sequences, print the \*\*Protocol\*\* sheet for the bench, or \*\*Save\*\* the experiment and \*\*Open\*\* it later.
+Launch the application:
 
+```bash
+python -m uvicorn api:app --reload
+```
 
+The development server enables local access for testing and development.
 
-The 3D Lab opens with a short tour; press \*\*Tour\*\* in the header to see it again. \*\*Undo\*\*, \*\*Redo\*\* and \*\*Clear all\*\* are always in the header.
+### Testing
 
+Install development dependencies:
 
+```bash
+python -m pip install -r requirements-dev.txt
+```
 
-\## Features
+Execute the test suite:
 
+```bash
+python -m pytest
+```
 
+---
 
-\- \*\*Templates and primers\*\*: upload or paste FASTA (multi-FASTA supported), enter primer pairs.
+## Technology Stack
 
-\- \*\*Reaction setup\*\*: 2X master mix or manual components (10X buffer, MgCl2, dNTPs, Taq). Primers in pmol, template in ng. Water and final concentrations are calculated, with checks for overfilled tubes, missing buffer, polymerase or free Mg2+.
+| Technology | Application |
+|---|---|
+| Python | Scientific computing and application logic |
+| FastAPI | Backend framework |
+| Uvicorn | ASGI server |
+| Gunicorn | Production process management |
+| Three.js | Interactive 3D visualization |
+| Biopython | Biological sequence processing |
+| Matplotlib | Scientific visualization |
+| pandas | Data handling |
+| pytest | Automated testing |
 
-\- \*\*Primer analysis\*\*: nearest-neighbour Tm under the actual reaction conditions, suggested annealing temperature, 3' dimer risk.
+---
 
-\- \*\*Thermocycler\*\*: 11 tube holders; staged program (initial denaturation, cycling, final extension, hold), conventional or \*\*gradient PCR\*\* (each holder gets its own editable annealing temperature; moving a tube into an occupied holder swaps the two).
+## Scientific Scope
 
-\- \*\*PCR simulation\*\* per tube:
+AmpliBench is designed for molecular biology education, experimental planning, and computational exploration.
 
-&#x20; - binding with a strict 3'-end rule and mismatch tolerance that depends on how far the annealing temperature is below Tm (off-target products),
+The application provides simulated representations of PCR amplification and agarose gel electrophoresis. These simulations are intended to support conceptual understanding and experimental preparation rather than replace laboratory validation.
 
-&#x20; - product size limited by extension time,
+### Limitations
 
-&#x20; - product sequence built from the primers (primer-introduced changes are carried into the product),
+Simulated outcomes are not guaranteed to reproduce experimental results. Actual amplification and electrophoretic behaviour depend on biological, biochemical, and experimental conditions that may not be fully represented computationally.
 
-&#x20; - \*\*primer dimers\*\* from 3'-end complementarity, stronger at higher primer concentration and in no-template controls,
+**Experimental validation remains essential.**
 
-&#x20; - band brightness from template copy number and cycle number (logistic amplification with a plateau).
+---
 
-\- \*\*Pipetting the way labs do it\*\*: each component into each tube, or a \*\*cocktail per primer pair\*\* (master mix + primers + water for all tubes of that gene plus one extra), then template or NTC water per tube. Separate tubes for every primer and template; adding the wrong one gives the wrong result, as at the bench.
+## Developer
 
-\- \*\*Gel electrophoresis\*\*: agarose percentage, run time (short or long run), comb with wells matching your samples, ladder on one or both sides, load volume. Small fragments can run off a long run.
+**Jeevitha C M**  
+PhD Research Scholar  
+SRM Institute of Science and Technology
 
-\- \*\*Realistic gel appearance\*\*: longer products glow brighter (stain binds along the length), a faint cloud of unused primers at the bottom of each lane, and a smear when the reaction is overamplified (too much template or too many cycles).
+AmpliBench is developed as part of the **21-Day Scientific Coding Challenge**, exploring the intersection of scientific computing, molecular biology, and interactive software development.
 
-\- \*\*Ladders\*\*: NEB 100 bp, NEB 1 kb Plus (with per-band DNA mass), GeneRuler 50 bp, 100 bp and 1 kb, generic ladders, or a custom ladder.
+---
 
-\- \*\*3D bench\*\*: a short guided tour on first use, click the machines themselves to work with them, pipette each tube with fresh tips, load the block, watch the run, load the gel well by well, run it and image it. Go back to any step and change it; re-view the gel at other agarose percentages or run times instantly.
+## License
 
-\- \*\*Undo / Redo / Clear all\*\* for every change in either view (Ctrl+Z / Ctrl+Y).
+Distributed under the MIT License.
 
-\- \*\*Exports\*\*: gel as PNG or SVG, products as FASTA, a printable \*\*protocol sheet\*\* (primers with Tm, per-tube and cocktail volumes, tube plan, program, gel loading order, simulated result), and \*\*save / open\*\* of the whole experiment as a JSON file.
+See [`LICENSE`](LICENSE) for details.
 
+---
 
-
-\## Scientific model and limitations
-
-
-
-| Part | How it is modelled | Limitation |
-
-|---|---|---|
-
-| Tm | Biopython nearest-neighbour Tm with primer, Na+, Mg2+ and dNTP concentrations | Mismatched sites use the perfect-match Tm |
-
-| Binding | Exact match of the last 3 bases at the 3' end; mismatches allowed elsewhere, more at lower annealing temperature | Rule-based thresholds, not thermodynamics; no secondary structure or GC-clamp scoring |
-
-| Amplification | Logistic growth from template copies to a plateau | Illustrative brightness, not a yield prediction |
-
-| Primer dimer | Perfect 3'-end complementarity of at least 4 bases (3 at high primer concentration) | Does not model hairpins or partial complementarity |
-
-| Template | Linear | Products spanning the origin of circular plasmids are not detected |
-
-| Gel brightness | Product copies x size factor (square root of length); primer cloud; smear after many cycles at plateau | Illustrative, not quantitative |
-
-| Gel | Speed falls with fragment size (sigmoid in log size), distance = speed x time | Not calibrated to a specific gel box, buffer or stain |
-
-| Extension | About 1 kb per minute (Taq) | High-fidelity or fast enzymes differ |
-
-
-
-Templates can be up to 200 kb each (genes, plasmids, cosmids, BACs). Whole genomes would need an indexed search, as used by BLAST or UCSC In-Silico PCR.
-
-
-
-\## Roadmap
-
-
-
-\- Primer quality check before the run (length, GC%, 3' clamp, Tm difference, hairpins, self-dimers)
-
-\- Mg2+ concentration affecting specificity
-
-\- Touchdown PCR programs
-
-\- Circular (plasmid) templates
-
-\- Multiplex PCR (more than one primer pair per tube)
-
-\- Indexed primer search for genome-scale templates
-
-
-
-\## Data
-
-
-
-The demo template is \*\*synthetic\*\* (random sequence with deliberate edits). It is not a biological sequence. Ladder band sizes and masses come from manufacturer documentation (below); check the datasheet of your lot.
-
-
-
-\## References
-
-
-
-\- Cock PJA et al. (2009). Biopython: freely available Python tools for computational molecular biology and bioinformatics. \*Bioinformatics\* 25(11):1422-1423.
-
-\- Allawi HT, SantaLucia J Jr (1997). Thermodynamics and NMR of internal G-T mismatches in DNA. \*Biochemistry\* 36(34):10581-10594 (Biopython's default nearest-neighbour table).
-
-\- von Ahsen N, Wittwer CT, Schutz E (2001). Oligonucleotide melting temperatures under PCR conditions. \*Clinical Chemistry\* 47(11):1956-1961 (Mg2+ and dNTP correction used by Biopython).
-
-\- New England Biolabs: 100 bp DNA Ladder (N3231) and 1 kb Plus DNA Ladder (N3200) product information.
-
-\- Thermo Scientific: GeneRuler 50 bp (SM0371), 100 bp (SM0241/SM0243) and 1 kb (SM0311) DNA Ladder product information.
-
-\- Three.js (https://threejs.org), FastAPI (https://fastapi.tiangolo.com), Matplotlib.
-
-
-
-\## Author
-
-
-
-Jeevitha C M, PhD Research Scholar, SRM Institute of Science and Technology. 
-
-
-
-\## License
-
-
-
-MIT License. See \[LICENSE](LICENSE).
-
-
-
-\---
-
-
-
-Running AmpliBench yourself or contributing? See the \[developer guide](docs/DEVELOPMENT.md).
-
+<p align="center">
+  <strong>AmpliBench</strong>
+  <br>
+  An interactive approach to computational molecular biology.
+</p>
