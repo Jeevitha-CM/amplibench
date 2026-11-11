@@ -165,8 +165,8 @@ Simulated outcomes are not guaranteed to reproduce experimental results. Actual 
 
 **Jeevitha C M**  
 PhD Research Scholar  
-SRM Institute of Science and Technology
-Founder - Biovagon 
+SRM Institute of Science and Technology  
+Founder - Biovagon   
 jeevithacm21@gmail.com
 
 
