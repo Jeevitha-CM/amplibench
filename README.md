@@ -174,15 +174,11 @@ The demo template is \*\*synthetic\*\* (random sequence with deliberate edits). 
 
 
 
-Related tools that inspired the design: UCSC In-Silico PCR, NCBI Primer-BLAST.
-
-
-
 \## Author
 
 
 
-Jeevitha C M, PhD Research Scholar, SRM Institute of Science and Technology. Part of the 21-Day Scientific Coding Challenge.
+Jeevitha C M, PhD Research Scholar, SRM Institute of Science and Technology. 
 
 
 
