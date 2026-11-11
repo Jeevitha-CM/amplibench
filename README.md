@@ -167,7 +167,7 @@ Simulated outcomes are not guaranteed to reproduce experimental results. Actual 
 PhD Research Scholar  
 SRM Institute of Science and Technology
 
-AmpliBench is developed as part of the **21-Day Scientific Coding Challenge**, exploring the intersection of scientific computing, molecular biology, and interactive software development.
+
 
 ---
 
