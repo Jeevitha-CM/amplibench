@@ -1,0 +1,7 @@
+biopython>=1.81
+matplotlib>=3.7
+pandas>=2.0
+streamlit>=1.32
+fastapi>=0.110
+uvicorn>=0.27
+pytest>=7.0

@@ -1,0 +1,2271 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AmpliBench: in silico PCR and gel bench</title>
+<style>
+  :root { --ink:#1b2330; --muted:#5f6b7a; --line:#dde2e8; --accent:#2c6bb0; --ok:#2e8b57; --err:#b3261e; }
+  * { box-sizing:border-box; }
+  html, body { margin:0; height:100%; overflow:hidden; font-family: system-ui, "Segoe UI", Roboto, sans-serif; color:var(--ink); }
+  #view { position:fixed; inset:0; }
+  :root { --header:56px; --den:#d9534f; --ann:#3b7dd8; --ext:#e69a28; }
+  #view { top:var(--header); }
+  /* header */
+  #header { position:fixed; top:0; left:0; right:0; height:var(--header); display:flex; align-items:center; gap:14px;
+            padding:0 16px; background:#fff; border-bottom:1px solid var(--line); z-index:4; }
+  #brand { display:flex; align-items:baseline; gap:8px; white-space:nowrap; }
+  #brand b { font-size:18px; color:#1d3f6e; letter-spacing:.2px; }
+  #brand span { font-size:12px; color:var(--muted); }
+  .seg { display:flex; border:1px solid var(--accent); border-radius:6px; overflow:hidden; }
+  .seg button { border:0; border-radius:0; padding:6px 12px; }
+  .seg button.on { background:var(--accent); color:#fff; }
+  #steps { display:flex; gap:2px; flex:1; justify-content:center; overflow-x:auto; }
+  .chip { padding:5px 9px; border-radius:5px; font-size:12px; color:var(--muted); white-space:nowrap; }
+  .chip.done { color:var(--ok); } .chip.now { background:var(--accent); color:#fff; font-weight:600; }
+  #hdrTools { display:flex; gap:6px; align-items:center; }
+  #hdrTools button, #hdrTools select { padding:5px 9px; font-size:12px; width:auto; }
+  /* left guide card */
+  #card { position:fixed; left:16px; top:calc(var(--header) + 12px); width:340px; max-height:calc(100vh - var(--header) - 28px);
+          overflow:auto; background:rgba(255,255,255,.97); border-radius:10px; padding:14px 16px;
+          box-shadow:0 2px 16px rgba(0,0,0,.12); z-index:3; }
+  #card.collapsed #cardBody { display:none; }
+  #cardHead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  #cardHead button { padding:2px 8px; font-size:12px; }
+  #card h2 { margin:0; font-size:16px; color:#1d3f6e; }
+  #card p { margin:8px 0 10px; font-size:13px; color:var(--muted); line-height:1.5; }
+  #card .actions { display:flex; gap:6px; flex-wrap:wrap; }
+  /* classic workbench */
+  #classic { position:fixed; top:var(--header); left:0; right:0; bottom:0; overflow:auto; background:#eef2f6;
+             display:none; padding:18px 22px 40px; z-index:2; }
+  #classic .cols { display:grid; grid-template-columns: minmax(320px, 1fr) minmax(320px, 1fr); gap:16px; }
+  #classic .box h3 { margin-top:0; }
+  @media (max-width: 900px) { #classic .cols { grid-template-columns:1fr; } #card { width:calc(100vw - 32px); } }
+  /* classic workbench: one clean column of numbered steps */
+  #classic .wrap { max-width:1000px; margin:0 auto; }
+  #cnav { position:sticky; top:-18px; z-index:2; display:flex; gap:6px; flex-wrap:wrap; align-items:center;
+          background:#eef2f6; padding:12px 0 10px; margin-bottom:4px; }
+  #cnav a { text-decoration:none; font-size:12px; padding:5px 11px; border-radius:14px; background:#fff;
+            border:1px solid var(--line); color:#22406a; }
+  #cnav a:hover { border-color:var(--accent); }
+  .cstep { background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 18px 16px; margin-bottom:14px; scroll-margin-top:64px; }
+  .cstep h3 { display:flex; align-items:center; gap:10px; margin:0 0 4px; color:#1d3f6e; font-size:16px; }
+  .cstep h3 .num { width:26px; height:26px; border-radius:50%; background:var(--accent); color:#fff; display:inline-flex;
+                   align-items:center; justify-content:center; font-size:13px; flex:none; }
+  .cstep .lead { color:var(--muted); font-size:13px; margin:0 0 10px; }
+  .cstep p, .cstep td, .cstep label { font-size:13px; }
+  #classic input, #classic select, #classic textarea { font-size:13px; padding:6px 8px; }
+  #classic td input, #classic td select { padding:3px 6px; }
+  #c_results img { display:block; max-width:620px; width:100% !important; margin:12px auto 0; }
+  .grid3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:8px 12px; }
+  .grid4 { display:grid; grid-template-columns:repeat(4, 1fr); gap:8px 12px; }
+  @media (max-width: 800px) { .grid3, .grid4 { grid-template-columns:1fr 1fr; } }
+  .note { background:#fff7e6; border:1px solid #f0d9a8; color:#7a5200; padding:7px 10px; border-radius:6px; font-size:12px; margin:8px 0 0; }
+  .note.err { background:#fdecea; border-color:#f3c2bd; color:#9b1c13; }
+  details summary { cursor:pointer; color:var(--accent); font-size:13px; margin-top:10px; }
+  .btnrow { display:flex; gap:6px; flex-wrap:wrap; margin-top:8px; }
+  /* welcome */
+  #welcome { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center;
+             background:linear-gradient(160deg, #f4f7fb 0%, #e3ebf5 100%); }
+  #welcome .inner { max-width:880px; padding:24px; text-align:center; }
+  #welcome h1 { font-size:44px; margin:0; color:#1d3f6e; letter-spacing:.5px; }
+  #welcome .tag { font-size:17px; color:var(--muted); margin:6px 0 30px; }
+  #welcome .choices { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  .choice { background:#fff; border:1px solid var(--line); border-radius:12px; padding:22px; text-align:left; cursor:pointer;
+            box-shadow:0 2px 12px rgba(0,0,0,.06); transition:transform .15s, box-shadow .15s; }
+  .choice:hover { transform:translateY(-2px); box-shadow:0 6px 20px rgba(0,0,0,.1); }
+  .choice h2 { margin:0 0 6px; color:#1d3f6e; font-size:20px; }
+  .choice p { margin:0; color:var(--muted); font-size:14px; line-height:1.5; }
+  .choice .for { margin-top:12px; font-size:12px; color:var(--accent); font-weight:600; }
+  .strip { display:flex; gap:6px; justify-content:center; margin:0 0 26px; }
+  .strip span { width:44px; height:8px; border-radius:4px; }
+  #welcome .foot { margin-top:22px; font-size:12px; color:var(--muted); }
+  @media (max-width: 700px) { #welcome .choices { grid-template-columns:1fr; } #welcome h1 { font-size:34px; } }
+  /* imaging room: darker panels while looking at the gel */
+  body.dark #card, body.dark #sideWrap { background:#1f252e; color:#e7ecf2; }
+  body.dark #card h2, body.dark #side h3 { color:#cfe1ff; }
+  body.dark #card p, body.dark .muted { color:#a8b3c2; }
+  body.dark .box, body.dark table { background:#262d37; border-color:#39424f; }
+  body.dark th { background:#2f3845; color:#cfe1ff; } body.dark td { border-color:#353d49; }
+  body.dark tr:nth-child(even) td { background:#29303a; }
+  body.dark #sideBar { background:#2a313b; border-color:#39424f; }
+  body.dark td, body.dark th { color:#e7ecf2; }
+  body.dark #results { background:#1f252e; color:#e7ecf2; }
+  body.dark #results img { background:#fff; border-radius:6px; }
+  body.dark input, body.dark select { background:#1b2129; color:#e7ecf2; border-color:#3b4452; }
+  button { padding:7px 12px; border:1px solid var(--accent); background:#fff; color:var(--accent);
+           border-radius:5px; font:inherit; font-size:13px; cursor:pointer; }
+  button.primary { background:var(--accent); color:#fff; }
+  button:disabled { opacity:.4; cursor:default; }
+  /* side panel for settings */
+  #sideWrap { position:fixed; right:16px; top:calc(var(--header) + 12px); bottom:16px; width:380px; display:none; flex-direction:column;
+              background:#f6f8fb; border-radius:10px; box-shadow:0 2px 16px rgba(0,0,0,.12); overflow:hidden; }
+  #sideWrap.collapsed { width:auto !important; bottom:auto; }
+  body.classic #card, body.classic #sideWrap, body.classic #steps, body.classic #speedSel { display:none !important; }
+  body.classic #classic { display:block; }
+  body.classic #viewTools { display:none; }
+  #tour { position:fixed; z-index:30; width:300px; background:#1d3f6e; color:#fff; border-radius:10px; padding:14px 16px;
+          box-shadow:0 6px 24px rgba(0,0,0,.3); display:none; font-size:13px; line-height:1.5; }
+  #tour h4 { margin:0 0 6px; font-size:15px; }
+  #tour .row { display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+  #tour button { background:#fff; color:#1d3f6e; border:0; padding:5px 10px; }
+  #tour button.ghost { background:transparent; color:#cfe1ff; border:1px solid #6d8fbf; }
+  .tourHi { outline:3px solid #f0b429 !important; outline-offset:3px; border-radius:8px; }
+  #loading { position:fixed; inset:0; z-index:25; display:none; align-items:center; justify-content:center; flex-direction:column;
+             background:rgba(233,239,246,.96); color:#1d3f6e; font-size:15px; gap:14px; }
+  .spinner { width:42px; height:42px; border-radius:50%; border:4px solid #c9d8ea; border-top-color:var(--accent);
+             animation:spin .9s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  #viewTools { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:4px; z-index:3;
+               background:rgba(255,255,255,.95); padding:6px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.15); }
+  #viewTools button { padding:5px 10px; font-size:12px; }
+  #viewTools span { font-size:12px; color:var(--muted); align-self:center; padding:0 4px; }
+  #sideBar span { font-size:12px; color:var(--muted); align-self:center; margin-right:2px; }
+  #sideWrap.collapsed #side, #sideWrap.collapsed #sideHandle { display:none; }
+  #sideHandle { position:absolute; left:0; top:0; bottom:0; width:7px; cursor:ew-resize; background:transparent; z-index:2; }
+  #sideHandle:hover { background:rgba(44,107,176,.25); }
+  #sideBar { display:flex; gap:4px; padding:6px 8px; background:#e9eef5; border-bottom:1px solid var(--line); }
+  #sideBar button { padding:3px 8px; font-size:12px; }
+  #side { flex:1; overflow:auto; padding:12px 14px 16px; font-size:13px; }
+  #side h3 { margin:2px 0 8px; font-size:14px; color:#22406a; }
+  .box { background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px 12px; margin-bottom:10px; }
+  label { display:block; color:var(--muted); margin:7px 0 2px; font-size:12px; }
+  input, select, textarea { width:100%; padding:4px 6px; border:1px solid var(--line); border-radius:4px; font:inherit; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:12px; margin-top:6px;
+          border:1px solid var(--line); border-radius:6px; overflow:hidden; background:#fff; }
+  td, th { padding:5px 6px; text-align:left; border-bottom:1px solid #edf0f4; }
+  th { background:#e8eff8; color:#22406a; font-weight:600; }
+  tr:nth-child(even) td { background:#fafbfd; }
+  tr:last-child td { border-bottom:0; }
+  /* program table sections */
+  .prog td.cyc { text-align:center; background:#fff7e6 !important; font-weight:600; color:#8a5a00; white-space:nowrap; }
+  .prog td.cyc input { width:64px; display:inline-block; margin-left:4px; }
+  .prog tr.den td:first-child { border-left:4px solid #d9534f; }
+  .prog tr.ann td:first-child { border-left:4px solid #3b7dd8; }
+  .prog tr.ext td:first-child { border-left:4px solid #e69a28; }
+  .prog tr.one td:first-child { border-left:4px solid #9aa4b1; }
+  .prog .stage { font-size:11px; color:var(--muted); background:#f1f4f8 !important; font-weight:600; }
+  td input, td select { padding:2px 4px; }
+  .tick { color:var(--ok); font-weight:700; } .dash { color:#c3c9d1; }
+  .sel { background:#eaf2fb; }
+  #tooltip { position:fixed; pointer-events:none; background:#1b2330; color:#fff; font-size:12px;
+             padding:4px 8px; border-radius:4px; display:none; white-space:nowrap; }
+  #toast { position:fixed; top:70px; z-index:20; left:50%; transform:translateX(-50%); background:#1b2330; color:#fff;
+           padding:8px 14px; border-radius:5px; font-size:13px; display:none; max-width:60%; }
+  #progress { height:6px; background:var(--line); border-radius:3px; overflow:hidden; margin:8px 0 2px; display:none; }
+  #progress div { height:100%; width:0; background:var(--accent); }
+  #results { position:fixed; inset:40px; z-index:5; background:#fff; border-radius:8px; padding:18px 22px; overflow:auto;
+             display:none; box-shadow:0 4px 30px rgba(0,0,0,.25); }
+  #results img { max-width:100%; max-height:70vh; display:block; margin:12px auto; }
+  .tag { padding:1px 6px; border-radius:3px; font-size:12px; }
+  .yes { background:#e3f2e9; color:var(--ok); } .no { background:#fbe9e7; color:var(--err); }
+  .muted { color:var(--muted); }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }
+</script>
+</head>
+<body>
+<div id="welcome"><div class="inner">
+  <div class="strip"><span style="background:var(--den)"></span><span style="background:var(--ann)"></span><span style="background:var(--ext)"></span></div>
+  <h1>AmpliBench</h1>
+  <div class="tag">An interactive <i>in silico</i> PCR and gel electrophoresis bench</div>
+  <div class="choices">
+    <div class="choice" id="pick3d"><h2>3D Lab</h2>
+      <p>Walk through the experiment at a virtual bench: pipette each tube, load the thermocycler, run and image the gel.</p>
+      <div class="for">Guided, visual, step by step: best for learning and teaching</div></div>
+    <div class="choice" id="pickClassic"><h2>Classic Workbench</h2>
+      <p>Tables and forms: set up tubes, program and gel, run, and compare gel conditions instantly. No animation.</p>
+      <div class="for">Fast: best for planning and checking primers</div></div>
+  </div>
+  <div class="foot" id="welcomeMsg" style="color:var(--accent);font-weight:600;display:flex;gap:8px;justify-content:center;align-items:center">
+    <span class="spinner" style="width:16px;height:16px;border-width:3px"></span> Loading...</div>
+  <div class="foot">You can switch between the two at any time and keep the same experiment.
+    Results are rule-based simulations, not guarantees of wet-lab outcomes.</div>
+</div></div>
+<div id="header">
+  <div id="brand"><b>AmpliBench</b><span><i>in silico</i> PCR and gel bench</span></div>
+  <div class="seg"><button id="m3d" class="on">3D Lab</button><button id="mClassic">Classic</button></div>
+  <div id="steps"></div>
+  <div id="hdrTools">
+    <select id="speedSel" title="Animation speed"><option value="1">Animation: normal</option>
+      <option value="0.35">Animation: fast</option><option value="0">Animation: off</option></select>
+    <button id="btnUndo" title="Undo (Ctrl+Z)">Undo</button>
+    <button id="btnRedo" title="Redo (Ctrl+Y)">Redo</button>
+    <button id="btnClear" title="Start a new, empty experiment">Clear all</button>
+    <button id="btnSave" title="Save the experiment to a file">Save</button>
+    <button id="btnLoad" title="Open a saved experiment">Open</button>
+    <button id="btnProtocol" title="Printable protocol sheet">Protocol</button>
+    <button id="btnTour" title="Show the guided tour again">Tour</button>
+    <input id="loadFile" type="file" accept=".json" style="display:none">
+  </div>
+</div>
+<div id="view"></div>
+<div id="viewTools"><span>View</span>
+  <button id="vFit" title="Show the whole bench">Fit bench</button>
+  <button id="vStation" title="Go to the station for this step">Current station</button>
+  <button id="vTop" title="Look from above">Top view</button>
+  <button id="vIn" title="Zoom in">+</button><button id="vOut" title="Zoom out">-</button></div>
+<div id="classic"></div>
+<div id="card"><div id="cardHead"><h2 id="cardTitle"></h2><button id="cardToggle" title="Collapse">-</button></div>
+  <div id="cardBody"><p id="cardText"></p>
+  <div id="progress"><div></div></div><div class="actions" id="cardActions"></div></div></div>
+<div id="sideWrap"><div id="sideHandle" title="Drag to resize"></div>
+  <div id="sideBar"><span>Panel</span><button id="sb_fit">Fit</button><button id="sb_wide">Wide</button>
+    <button id="sb_narrow">Narrow</button><button id="sb_hide">Hide</button></div>
+  <div id="side"></div></div>
+<div id="tooltip"></div>
+<div id="tour"><h4 id="tourTitle"></h4><div id="tourText"></div>
+  <div class="row"><span id="tourCount" style="opacity:.8"></span>
+    <span><button class="ghost" id="tourSkip">Skip</button> <button id="tourNext">Next</button></span></div></div>
+<div id="loading"><div class="spinner"></div><div id="loadingText">Preparing the 3D lab...</div></div>
+<div id="toast"></div>
+<div id="results"></div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoundedBoxGeometry } from "three/addons/geometries/RoundedBoxGeometry.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+
+const $ = (id) => document.getElementById(id);
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// =====================================================================
+// STATE: everything the experiment needs, kept in one object
+// =====================================================================
+const GRADIENT_WELLS = 11, MAX_TUBES = 11;   // the thermocycler has 11 tube holders
+const S = {
+  demo: null,
+  templates: {},     // name -> sequence
+  pairs: {},         // name -> {forward, reverse}
+  pipetMode: "components",   // or "cocktail" (one mix per primer pair)
+  cocktails: {},     // pair -> { made: bool, tubes: n }
+  setup: { mode: "2X master mix", volume: 10, primerPmol: 5, primerStock: 10, templateUl: 1, templateNg: 50,
+           mmUl: 5, bufferUl: 1, mgUl: 0.6, dntpUl: 0.2, taqUl: 0.05 },      // component volumes per tube (uL)
+  program: { initT: 95, initS: 300, denT: 95, denS: 30, annT: 55, annS: 30, extT: 72, extS: 60,
+             cycles: 30, finS: 300, type: "Conventional", gLow: 50, gHigh: 62, wells: [] },
+  gel: { agarose: 1.5, runMinutes: 40, ladder: "", ladderPos: "first", loadUl: 5 },
+  tubes: [],          // { name, template, pair, well, added:Set, volume, obj }
+  selected: null,
+  step: 0,
+  reached: 0,
+  pcr: null,          // response of the PCR run
+  gelData: null,      // response with gel layout
+  busy: false,
+};
+const DEFAULT_SETUP = structuredClone(S.setup), DEFAULT_PROGRAM = structuredClone(S.program), DEFAULT_GEL = structuredClone(S.gel);
+
+const REAGENTS = {
+  "master mix":     { label: "2X Master mix",   cap: 0xe0559a },
+  "buffer":         { label: "10X PCR buffer",  cap: 0x4f95db },
+  "mgcl2":          { label: "MgCl2 25 mM",     cap: 0xbfc4cb },
+  "dntps":          { label: "dNTP mix 10 mM",  cap: 0xf0a030 },
+  "taq":            { label: "Taq 5 U/uL",      cap: 0xd04040 },
+  "forward primer": { label: "Forward primer",  cap: 0x3cb371 },
+  "reverse primer": { label: "Reverse primer",  cap: 0x1f8a8a },
+  "template":       { label: "Template DNA",    cap: 0x8a5ad0 },
+  "water":          { label: "Nuclease-free water", cap: 0x9fd3f0 },
+  "ladder":         { label: "DNA ladder",      cap: 0x2b2b2b },
+  "ntc water":      { label: "Water for NTC (replaces template)", cap: 0x6fc3ef },
+};
+const mixParts = () => S.setup.mode === "2X master mix" ? ["master mix"] : ["buffer", "mgcl2", "dntps", "taq"];
+// Generic component types (for the recipe and checklist)
+const componentTypes = () => [...mixParts(), "forward primer", "reverse primer", "template", "water"];
+// Actual tubes on the cooling block: one per primer of every pair in use, one per template in use
+const pairsInUse = () => [...new Set(S.tubes.map(t => t.pair))].filter(p => S.pairs[p]);
+const templatesInUse = () => [...new Set(S.tubes.map(t => t.template))].filter(n => S.templates[n]);
+const reagentList = () => [...mixParts(), ...pairsInUse().flatMap(p => [`fwd:${p}`, `rev:${p}`]),
+                           ...templatesInUse().map(n => `tpl:${n}`), "water",
+                           ...(S.pipetMode === "cocktail" ? ["ntc water", ...Object.keys(S.cocktails).map(p => `mix:${p}`)] : [])];
+// A cocktail holds everything except the template
+const cocktailParts = (pair) => [...mixParts(), `fwd:${pair}`, `rev:${pair}`, "water"];
+const PAIR_COLOURS = [0x3cb371, 0x1f8a8a, 0x8fbc3c, 0x2b9fd8, 0xd4a017, 0x9b59b6];
+function typeOf(key) {               // "fwd:A" -> "forward primer"
+  if (key.startsWith("mix:")) return "cocktail";
+  if (key.startsWith("fwd:")) return "forward primer";
+  if (key.startsWith("rev:")) return "reverse primer";
+  if (key.startsWith("tpl:")) return "template";
+  return key;
+}
+function labelOf(key) {
+  if (key.startsWith("mix:")) return `Cocktail ${key.slice(4)} (mix + primers + water)`;
+  if (key.startsWith("fwd:")) return `Fwd primer ${key.slice(4)}`;
+  if (key.startsWith("rev:")) return `Rev primer ${key.slice(4)}`;
+  if (key.startsWith("tpl:")) return `Template ${key.slice(4)}`;
+  return REAGENTS[key].label;
+}
+function shortOf(key) {               // what you'd write on the cap with a marker
+  if (key.startsWith("mix:")) return `Mix ${key.slice(4)}`;
+  if (key.startsWith("fwd:")) return `F-${key.slice(4)}`;
+  if (key.startsWith("rev:")) return `R-${key.slice(4)}`;
+  if (key.startsWith("tpl:")) return key.slice(4).slice(0, 6);
+  return { "master mix": "2X MM", buffer: "10X", mgcl2: "Mg", dntps: "dNTP", taq: "Taq", water: "H2O",
+           "ntc water": "NTC", ladder: "Ladder" }[key] ?? key;
+}
+function colourOf(key) {
+  if (key.startsWith("mix:")) return new THREE.Color(colourOf(`fwd:${key.slice(4)}`)).lerp(new THREE.Color(0xffffff), 0.35).getHex();
+  if (key.startsWith("fwd:") || key.startsWith("rev:")) {
+    const i = Object.keys(S.pairs).indexOf(key.slice(4));
+    const c = new THREE.Color(PAIR_COLOURS[Math.max(0, i) % PAIR_COLOURS.length]);
+    if (key.startsWith("rev:")) c.offsetHSL(0, 0, -0.15);       // reverse primer: darker cap of the same colour
+    return c.getHex();
+  }
+  if (key.startsWith("tpl:")) return 0x8a5ad0;
+  return REAGENTS[key].cap;
+}
+function volumeOf(key) {
+  if (key.startsWith("mix:")) return cocktailParts(key.slice(4)).reduce((a, k) => a + volumeOf(k), 0);
+  if (key === "ntc water") return volumes().template;
+  return volumes()[typeOf(key)];
+}
+// The tube's plan: what should go in it according to the setup
+const plannedFor = (t) => [...mixParts(), `fwd:${t.pair}`, `rev:${t.pair}`, `tpl:${t.template}`, "water"];
+
+function recipeJson() {
+  const v = S.setup.volume;
+  return { mode: S.setup.mode, reaction_volume_ul: v, primer_pmol: S.setup.primerPmol,
+           primer_stock_pmol_per_ul: S.setup.primerStock, template_ul: S.setup.templateUl,
+           template_ng_per_ul: S.setup.templateNg, mm_ul: S.setup.mmUl, buffer_ul: S.setup.bufferUl,
+           mg_ul: S.setup.mgUl, dntp_ul: S.setup.dntpUl, taq_ul: S.setup.taqUl };
+}
+// Sensible starting volumes for a reaction volume (all scale with the volume)
+const volumeDefaults = (v) => ({ mmUl: v / 2, bufferUl: v / 10, mgUl: +(1.5 * v / 25).toFixed(2), dntpUl: +(0.02 * v).toFixed(2),
+                                 taqUl: +(0.005 * v).toFixed(3), primerPmol: +(0.5 * v).toFixed(1), templateUl: +(0.1 * v).toFixed(1) });
+const STOCKS = () => ({ "master mix": "2X", buffer: "10X (no Mg)", mgcl2: "25 mM", dntps: "10 mM each", taq: "5 U/uL",
+  "forward primer": `${S.setup.primerStock} pmol/uL`, "reverse primer": `${S.setup.primerStock} pmol/uL`,
+  template: `${S.setup.templateNg} ng/uL`, water: "-" });
+// One place that changes the setup, used by both views
+function applySetupChange(key, value, keepTubes) {
+  const flags = S.tubes.map(tubeFlags);              // what each tube holds, in plain terms
+  S.setup[key] = key === "mode" ? value : +value;
+  if (key === "volume") Object.assign(S.setup, volumeDefaults(+value));
+  S.cocktails = {};
+  if (keepTubes) S.tubes.forEach((t, i) => setTubeFlags(t, flags[i]));        // classic: same tubes, new recipe
+  else if (key === "mode") S.tubes.forEach(t => { t.added.clear(); t.volume = 0; refreshLiquid(t); });   // 3D: other reagents on the bench
+  else S.tubes.forEach(t => { t.volume = [...t.added].reduce((a, k) => a + volumeOf(k), 0); refreshLiquid(t); });
+  buildReagents();
+}
+function componentInputs(kind) {        // kind "f" = 3D panel (ids), "c" = classic (data-c)
+  const s = S.setup, attr = (k) => kind === "f" ? `id="f_${k}"` : `data-c="${k}"`;
+  const field = (k, label, step) => `<div><label>${label}</label><input ${attr(k)} type="number" min="0" step="${step}" value="${s[k]}"></div>`;
+  return s.mode === "2X master mix" ? field("mmUl", "2X master mix (uL)", 0.5)
+    : field("bufferUl", "10X buffer (uL)", 0.1) + field("mgUl", "25 mM MgCl2 (uL)", 0.1)
+      + field("dntpUl", "10 mM dNTP mix (uL)", 0.05) + field("taqUl", "Taq 5 U/uL (uL)", 0.01);
+}
+function finalConcentrations() {
+  const s = S.setup, v = s.volume, mm = s.mode === "2X master mix", x = 2 * s.mmUl / v;
+  const buf = mm ? x : 10 * s.bufferUl / v, mg = mm ? 1.5 * x : 25 * s.mgUl / v;
+  const dntp = mm ? 0.2 * x : 10 * s.dntpUl / v, taq = mm ? 0.025 * x * v : 5 * s.taqUl;
+  return `In each tube: buffer ${buf.toFixed(2)}X, Mg2+ ${mg.toFixed(2)} mM, dNTPs ${dntp.toFixed(2)} mM each, Taq ${taq.toFixed(2)} U,
+    primers ${(s.primerPmol / v).toFixed(2)} uM each (${s.primerPmol} pmol), template ${(s.templateUl * s.templateNg).toFixed(0)} ng.`;
+}
+function setupWarnings() {
+  const s = S.setup, v = s.volume, vol = volumes(), w = [];
+  const parts = Object.entries(vol).filter(([k]) => k !== "water").reduce((a, [, x]) => a + x, 0);
+  if (parts > v + 1e-9) w.push({ err: true, text: `Components add up to ${parts.toFixed(2)} uL, more than the ${v} uL reaction.` });
+  if (s.mode === "2X master mix" && Math.abs(2 * s.mmUl - v) > 0.01) w.push({ text: `A 2X mix should be half the reaction: ${v / 2} uL.` });
+  if (s.mode !== "2X master mix") {
+    if (!(s.bufferUl > 0 && s.dntpUl > 0 && s.taqUl > 0 && s.mgUl > 0)) w.push({ err: true, text: "Buffer, MgCl2, dNTPs and Taq are all needed." });
+    const bx = 10 * s.bufferUl / v;
+    if (s.bufferUl > 0 && Math.abs(bx - 1) > 0.2) w.push({ text: `Buffer is at ${bx.toFixed(2)}X instead of 1X.` });
+    if (25 * s.mgUl / v > 3) w.push({ text: "Mg2+ above 3 mM tends to reduce specificity." });
+  }
+  if (Object.values(vol).some(x => x > 0 && x < 0.5)) w.push({ text: "Volumes below 0.5 uL are hard to pipette accurately: prepare a cocktail for all tubes." });
+  return w;
+}
+const warningHtml = () => setupWarnings().map(x => `<div class="note ${x.err ? "err" : ""}">${x.text}</div>`).join("");
+function volumes() {
+  const r = recipeJson(), p = r.primer_pmol / r.primer_stock_pmol_per_ul;
+  const vol = { "forward primer": p, "reverse primer": p, template: r.template_ul };
+  if (r.mode === "2X master mix") vol["master mix"] = r.mm_ul;
+  else Object.assign(vol, { buffer: r.buffer_ul, mgcl2: r.mg_ul, dntps: r.dntp_ul, taq: r.taq_ul });
+  vol.water = Math.max(0, +(r.reaction_volume_ul - Object.values(vol).reduce((a, b) => a + b, 0)).toFixed(2));
+  return vol;
+}
+function programJson() {
+  const p = S.program;
+  return { initial_denat_temp: p.initT, initial_denat_sec: p.initS, denat_temp: p.denT, denat_sec: p.denS,
+           anneal_temp: p.annT, anneal_sec: p.annS, extension_temp: p.extT, extension_sec: p.extS,
+           cycles: p.cycles, final_extension_sec: p.finS };
+}
+function fillGradient() {
+  const { gLow: lo, gHigh: hi } = S.program;
+  S.program.wells = Array.from({ length: GRADIENT_WELLS }, (_, i) => +(lo + (hi - lo) * i / (GRADIENT_WELLS - 1)).toFixed(1));
+}
+
+// =====================================================================
+// SCENE
+// =====================================================================
+const view = $("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+view.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xd9e1ea);
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+
+const camera = new THREE.PerspectiveCamera(38, 1, 0.1, 600);
+camera.position.set(0, 52, 66);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 2, -2);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI / 2.15;
+controls.minDistance = 12; controls.maxDistance = 120;
+
+const hemi = new THREE.HemisphereLight(0xffffff, 0xa0a8b4, 0.7);
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.position.set(25, 50, 30);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -60, right: 60, top: 45, bottom: -45 });
+sun.shadow.camera.updateProjectionMatrix();
+scene.add(hemi, sun);
+
+const plastic = (color, o = {}) => new THREE.MeshPhysicalMaterial({ color, roughness: 0.35, clearcoat: 0.4, ...o });
+const clearPlastic = (o = {}) => plastic(0xffffff, { transparent: true, opacity: 0.38, roughness: 0.08, ...o });
+const metal = (color) => new THREE.MeshStandardMaterial({ color, metalness: 0.8, roughness: 0.35 });
+function shadow(m) { m.castShadow = true; m.receiveShadow = true; return m; }
+function rbox(w, h, d, mat, r = 0.4) { return shadow(new THREE.Mesh(new RoundedBoxGeometry(w, h, d, 4, r), mat)); }
+const hoverables = [];            // meshes with userData.tip for tooltips
+const tip = (mesh, text, station) => { mesh.userData.tip = text; if (station) mesh.userData.station = station; hoverables.push(mesh); return mesh; };
+const unhover = (m) => { const k = hoverables.indexOf(m); if (k >= 0) hoverables.splice(k, 1); };
+
+// bench and lab mat
+const bench = new THREE.Mesh(new THREE.BoxGeometry(130, 2, 70), new THREE.MeshStandardMaterial({ color: 0x3a4148, roughness: 0.55 }));   // black epoxy lab bench
+bench.position.y = -1; bench.receiveShadow = true; scene.add(bench);
+const mat = new THREE.Mesh(new THREE.BoxGeometry(70, 0.1, 30), new THREE.MeshStandardMaterial({ color: 0xc9d8e8, roughness: 1 }));   // bench mat
+mat.position.set(-8, 0.05, 8); mat.receiveShadow = true; scene.add(mat);
+
+// ---------- tube shapes (LatheGeometry spins a profile around the y axis) ----------
+const v2 = (x, y) => new THREE.Vector2(x, y);
+const PCR_PROFILE = [v2(0, 0), v2(0.12, 0.04), v2(0.42, 0.95), v2(0.45, 1.0), v2(0.45, 2.1), v2(0.52, 2.15), v2(0.52, 2.28), v2(0.45, 2.28)];
+const PCR_INNER = [[0.06, 0.06], [0.95, 0.37], [1.0, 0.39], [2.05, 0.39]];   // [height y, radius r] inside the tube
+const BIG_PROFILE = [v2(0, 0), v2(0.25, 0.08), v2(0.68, 1.3), v2(0.7, 1.4), v2(0.7, 3.9), v2(0.8, 3.95), v2(0.8, 4.1), v2(0.7, 4.1)];
+function radiusAt(y) {
+  const P = [[0, 0.05], ...PCR_INNER];
+  for (let i = 1; i < P.length; i++) if (y <= P[i][0]) {
+    const [y0, r0] = P[i - 1], [y1, r1] = P[i];
+    return r0 + (r1 - r0) * (y - y0) / (y1 - y0);
+  }
+  return P[P.length - 1][1];
+}
+function liquidGeometry(h) {
+  const pts = [v2(0, 0.06)];
+  for (const [y, r] of [[0.06, 0.05], ...PCR_INNER]) if (y < h) pts.push(v2(r, y));
+  pts.push(v2(radiusAt(h), h), v2(0, h));
+  return new THREE.LatheGeometry(pts, 24);
+}
+const heightForVolume = (ul) => Math.min(2.0, 0.12 + Math.cbrt(ul / 60) * 1.25);   // realistic filling of a 0.2 mL tube
+
+// Text drawn like a lab marker on a cap top or a tube label
+function markerTexture(text, { bg = "#ffffff", fg = "#1b2a4a", w = 256, h = 256, repeat = 1 } = {}) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h;
+  const x = c.getContext("2d");
+  x.fillStyle = bg; x.fillRect(0, 0, w, h);
+  x.fillStyle = fg; x.textAlign = "center"; x.textBaseline = "middle";
+  let size = Math.floor(h * 0.42);
+  x.font = `bold ${size}px "Segoe Print", "Comic Sans MS", system-ui`;
+  while (x.measureText(text).width > (w / repeat) * 0.88 && size > 10) { size -= 2; x.font = `bold ${size}px "Segoe Print", "Comic Sans MS", system-ui`; }
+  for (let i = 0; i < repeat; i++) x.fillText(text, (w / repeat) * (i + 0.5), h / 2);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  return t;
+}
+const TUBE_CAPS = [0xf6c1c1, 0xc1dcf6, 0xc9efc5, 0xf6e3b4, 0xe2c9f2, 0xbfeee9, 0xf7d0e6, 0xd7dbe0];
+function capLabel(cap, radius, text, bg) {          // writing on top of a cap
+  const top = new THREE.Mesh(new THREE.CircleGeometry(radius * 0.9, 28),
+    new THREE.MeshBasicMaterial({ map: markerTexture(text, { bg }), toneMapped: false }));
+  top.rotation.x = -Math.PI / 2;
+  top.position.y = cap.geometry.parameters.height / 2 + 0.005;
+  top.name = "capText";
+  cap.add(top);
+  return top;
+}
+function makePcrTube() {
+  const g = new THREE.Group();
+  const body = shadow(new THREE.Mesh(new THREE.LatheGeometry(PCR_PROFILE, 28), clearPlastic({ side: THREE.DoubleSide })));
+  const liquid = new THREE.Mesh(liquidGeometry(0.2), plastic(0x9fd3f0, { transparent: true, opacity: 0.9 }));
+  liquid.visible = false;
+  const hinge = new THREE.Group();
+  hinge.position.set(0, 2.28, -0.55);
+  const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.52, 0.52, 0.22, 24), plastic(0xf6c1c1, { transparent: true, opacity: 0.85 }));
+  cap.position.set(0, 0.11, 0.55);
+  const plug = new THREE.Mesh(new THREE.CylinderGeometry(0.4, 0.4, 0.3, 20), plastic(0xf6c1c1, { transparent: true, opacity: 0.6 }));
+  plug.position.set(0, -0.12, 0.55);
+  hinge.add(cap, plug);
+  hinge.rotation.x = 0;                         // closed until you work on this tube
+  g.add(body, liquid, hinge);
+  return { group: g, body, liquid, hinge, cap, plug };
+}
+function makeBigTube(capColor, short = "", long = "") {
+  const g = new THREE.Group();
+  const body = shadow(new THREE.Mesh(new THREE.LatheGeometry(BIG_PROFILE, 28), clearPlastic({ side: THREE.DoubleSide })));
+  const liquid = new THREE.Mesh(new THREE.CylinderGeometry(0.6, 0.25, 1.9, 24), plastic(capColor, { transparent: true, opacity: 0.55 }));
+  liquid.position.y = 1.15;
+  const cap = shadow(new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 0.45, 24), plastic(capColor)));
+  cap.position.y = 4.35;
+  g.add(body, liquid, cap);
+  if (short) capLabel(cap, 0.85, short, "#" + new THREE.Color(capColor).lerp(new THREE.Color(0xffffff), 0.55).getHexString());
+  if (long) {                                  // white label wrapped around the tube, written on twice
+    const band = new THREE.Mesh(new THREE.CylinderGeometry(0.715, 0.715, 1.1, 32, 1, true),
+      new THREE.MeshStandardMaterial({ map: markerTexture(long, { w: 1024, h: 128, repeat: 2 }), roughness: 0.8 }));
+    band.position.y = 2.9;
+    g.add(band);
+  }
+  return { group: g, meshes: [body, liquid, cap], cap, liquid };
+}
+
+// ---------- tube rack ----------
+const RACK = new THREE.Vector3(-6, 0, 10);
+{
+  const rack = rbox(32, 1.6, 5, plastic(0x2f78c4), 0.3);
+  rack.position.set(RACK.x, 0.8, RACK.z); scene.add(tip(rack, "PCR tube rack", "bench"));
+}
+const rackSlot = (i) => new THREE.Vector3(RACK.x - 14.3 + i * 2.6, 0.9, RACK.z);
+
+// ---------- cooling block with reagents ----------
+const ICE = new THREE.Vector3(-30, 0, 9);
+let iceBlock = null;
+function setBigLiquid(t, frac) {
+  t.liquid.scale.y = Math.max(0.02, frac);
+  t.liquid.position.y = 0.2 + 1.9 * t.liquid.scale.y / 2;
+}
+let reagentObjs = {};
+function buildReagents(extra = []) {
+  Object.values(reagentObjs).forEach(r => { scene.remove(r.group); r.meshes.forEach(unhover); });
+  reagentObjs = {};
+  const keys = [...reagentList(), ...extra], rows = Math.max(3, Math.ceil(keys.length / 4));
+  if (iceBlock) { scene.remove(iceBlock); unhover(iceBlock); }
+  iceBlock = rbox(12, 2.2, rows * 3.8 + 1, plastic(0xbfe0f5, { roughness: 0.6 }), 0.5);
+  iceBlock.position.set(ICE.x, 1.1, ICE.z - 5.7 + (rows * 3.8 + 1) / 2);
+  scene.add(tip(iceBlock, "Cooling block: keeps reagents cold", "bench"));
+  keys.forEach((key, i) => {
+    const t = makeBigTube(colourOf(key), shortOf(key), labelOf(key));
+    t.group.position.set(ICE.x - 3.9 + (i % 4) * 2.6, 1.0, ICE.z - 3.8 + Math.floor(i / 4) * 3.8);
+    t.meshes.forEach(m => { m.userData.reagent = key; tip(m, labelOf(key)); });
+    if (key.startsWith("mix:")) setBigLiquid(t, S.cocktails[key.slice(4)].made ? 1 : 0.02);
+    scene.add(t.group);
+    reagentObjs[key] = t;
+  });
+}
+
+// ---------- tip box ----------
+const TIPBOX = new THREE.Vector3(10, 0, 11);
+const TIP_LEN = 2.1;
+const tipProfile = [v2(0.04, 0), v2(0.1, 0.4), v2(0.24, 1.9), v2(0.3, 2.0), v2(0.3, 2.1)];
+const tipGeo = new THREE.LatheGeometry(tipProfile, 18);
+const tipMat = clearPlastic({ color: 0xf8f3dc, opacity: 0.7 });
+let tips = [];
+{
+  const base = rbox(8.4, 2.6, 6, plastic(0x2f6cad), 0.25);
+  base.position.set(TIPBOX.x, 1.3, TIPBOX.z); scene.add(tip(base, "Pipette tips (sterile)", "bench"));
+  const lid = new THREE.Mesh(new RoundedBoxGeometry(8.4, 0.3, 6, 2, 0.12), clearPlastic({ opacity: 0.3 }));
+  lid.position.set(TIPBOX.x, 5.6, TIPBOX.z - 3.05); lid.rotation.x = -Math.PI / 2;
+  scene.add(lid);
+}
+function refillTips() {
+  tips.forEach(t => scene.remove(t)); tips = [];
+  for (let r = 0; r < 4; r++) for (let c = 0; c < 8; c++) {
+    const t = new THREE.Mesh(tipGeo, tipMat);
+    t.position.set(TIPBOX.x - 3.3 + c * 0.95, 1.9, TIPBOX.z - 2 + r * 1.3);
+    scene.add(t); tips.push(t);
+  }
+}
+
+// ---------- waste ----------
+const WASTE = new THREE.Vector3(20, 0, 12);
+{
+  const w = shadow(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.2, 5, 28, 1, true), plastic(0x8b919b, { side: THREE.DoubleSide })));
+  w.position.set(WASTE.x, 2.5, WASTE.z); scene.add(tip(w, "Tip waste", "bench"));
+  const bottom = new THREE.Mesh(new THREE.CircleGeometry(2.2, 28), plastic(0x6f7580));
+  bottom.rotation.x = -Math.PI / 2; bottom.position.set(WASTE.x, 0.05, WASTE.z); scene.add(bottom);
+}
+
+// ---------- pipette (origin = end of the nozzle) ----------
+const pipette = new THREE.Group();
+{
+  const prof = [v2(0.12, 0), v2(0.22, 0.6), v2(0.34, 2.2), v2(0.45, 2.5), v2(0.55, 4.6), v2(0.78, 5.2),
+                v2(0.82, 8.6), v2(0.6, 9.1), v2(0.22, 9.2), v2(0.22, 9.25)];
+  const body = shadow(new THREE.Mesh(new THREE.LatheGeometry(prof, 32), plastic(0xeef0f3)));
+  const shaftTip = new THREE.Mesh(new THREE.CylinderGeometry(0.34, 0.12, 2.2, 20), plastic(0xd5d9de));
+  shaftTip.position.y = 1.1;
+  const hook = new THREE.Mesh(new THREE.TorusGeometry(0.75, 0.2, 12, 24, Math.PI), plastic(0x3d4a5c));
+  hook.position.set(0, 7.6, 0.9); hook.rotation.set(0, Math.PI / 2, Math.PI / 2);
+  const plunger = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 1.3, 14), metal(0xc0c6cc));
+  plunger.position.y = 9.85;
+  const button = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.5, 0.35, 24), plastic(0x2c6bb0));
+  button.position.y = 10.6;
+  const ejectRod = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.08, 5.5, 10), metal(0xb0b6bc));
+  ejectRod.position.set(0.62, 6.1, 0);
+  const ejectBtn = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.35, 0.5), plastic(0x3d4a5c));
+  ejectBtn.position.set(0.62, 8.95, 0);
+  const display = new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.2, 0.55), new THREE.MeshBasicMaterial({ color: 0x1d2b25 }));
+  display.position.set(-0.82, 6.6, 0);
+  pipette.add(body, shaftTip, hook, plunger, button, ejectRod, ejectBtn, display);
+  tip(body, "Micropipette", "bench");
+  pipette.userData.button = button;
+}
+const PIPETTE_HOME = new THREE.Vector3(2, 13, 10);
+pipette.position.copy(PIPETTE_HOME);
+pipette.rotation.z = -0.08;
+scene.add(pipette);
+let heldTip = null;
+
+// ---------- thermocycler ----------
+const TC = new THREE.Vector3(18, 0, -14);
+const thermo = new THREE.Group(); thermo.position.copy(TC); scene.add(thermo);
+const WELL_X0 = -9.0, WELL_DX = 1.8, BLOCK_Z = 1.0, HOLDERS = 11;
+let lidHinge, tcLed, screenCanvas, screenTex, tcBlock;
+{
+  const body = rbox(26, 9, 20, plastic(0xc9d0d8), 0.8);
+  const panel = new THREE.Mesh(new RoundedBoxGeometry(25, 6.2, 0.4, 3, 0.15), plastic(0x2c3542));
+  panel.position.set(0, 4.6, 9.9); thermo.add(panel);
+  body.position.y = 4.5; thermo.add(tip(body, "Thermocycler: 11 tube holders", "cycler"));
+  const block = new THREE.Mesh(new THREE.BoxGeometry(22, 0.6, 5), metal(0xa9b1ba));
+  tcBlock = block;
+  block.position.set(0, 9.0, BLOCK_Z); thermo.add(block);
+  const wells = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.55, 0.55, 0.12, 16),
+    new THREE.MeshStandardMaterial({ color: 0x3b4048 }), HOLDERS);
+  const m = new THREE.Matrix4();
+  for (let c = 0; c < HOLDERS; c++) { m.makeTranslation(WELL_X0 + c * WELL_DX, 9.32, BLOCK_Z); wells.setMatrixAt(c, m); }
+  thermo.add(wells);
+  // holder numbers printed in front of the wells
+  const nc = document.createElement("canvas"); nc.width = 1100; nc.height = 60;
+  const nx = nc.getContext("2d");
+  nx.fillStyle = "#a9b1ba"; nx.fillRect(0, 0, nc.width, nc.height);
+  nx.fillStyle = "#1b2330"; nx.font = "bold 34px system-ui"; nx.textAlign = "center"; nx.textBaseline = "middle";
+  for (let c = 0; c < HOLDERS; c++) nx.fillText(String(c + 1), nc.width / 2 + (WELL_X0 + c * WELL_DX) * (nc.width / 22), 30);
+  const nt = new THREE.CanvasTexture(nc); nt.colorSpace = THREE.SRGBColorSpace;
+  const numbers = new THREE.Mesh(new THREE.PlaneGeometry(22, 1.2), new THREE.MeshBasicMaterial({ map: nt }));
+  numbers.rotation.x = -Math.PI / 2; numbers.position.set(0, 9.31, BLOCK_Z + 1.9); thermo.add(numbers);
+  lidHinge = new THREE.Group(); lidHinge.position.set(0, 9.3, -9.8);
+  const lid = rbox(25, 2.4, 18.5, plastic(0x55606d), 0.6);
+  lid.position.set(0, 2.2, 9.3);
+  const handle = new THREE.Mesh(new THREE.BoxGeometry(10, 0.6, 1), plastic(0x7c8794));
+  handle.position.set(0, 2.2, 18.8);
+  lidHinge.add(lid, handle);
+  lidHinge.rotation.x = -1.95;
+  thermo.add(lidHinge);
+  screenCanvas = document.createElement("canvas"); screenCanvas.width = 640; screenCanvas.height = 300;
+  screenTex = new THREE.CanvasTexture(screenCanvas); screenTex.colorSpace = THREE.SRGBColorSpace;
+  const screen = new THREE.Mesh(new THREE.PlaneGeometry(10.5, 4.9), new THREE.MeshBasicMaterial({ map: screenTex, toneMapped: false }));
+  screen.position.set(5.5, 4.6, 10.12); thermo.add(screen);
+  tcLed = new THREE.Mesh(new THREE.SphereGeometry(0.3, 16, 12), new THREE.MeshBasicMaterial({ color: 0x30c060 }));
+  tcLed.position.set(-9, 4.6, 10.2); thermo.add(tcLed);
+}
+const blockSlot = (col) => new THREE.Vector3(TC.x + WELL_X0 + col * WELL_DX, 7.6, TC.z + BLOCK_Z);
+
+// ---------- gel tank + power supply ----------
+const GT = new THREE.Vector3(-28, 0, -14);
+const GEL_W = 11, GEL_L = 8;                    // gel size on screen (x across wells, z along the run)
+let gelCanvas, gelTex, gelWellsGroup, psCanvas, psTex, psLed;
+{
+  const tankMat = clearPlastic({ opacity: 0.3, color: 0xcfe6ff });
+  const floor = rbox(18, 0.4, 12, plastic(0x9fb6cc), 0.15);
+  floor.position.set(GT.x, 0.2, GT.z); scene.add(tip(floor, "Gel electrophoresis tank", "gel"));
+  for (const [w, d, x, z] of [[18, 0.3, 0, -6], [18, 0.3, 0, 6], [0.3, 12, -9, 0], [0.3, 12, 9, 0]]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 4, d), tankMat);
+    wall.position.set(GT.x + x, 2, GT.z + z); scene.add(wall);
+  }
+  const buffer = new THREE.Mesh(new THREE.BoxGeometry(17.4, 0.05, 11.4), plastic(0x7fb3e0, { transparent: true, opacity: 0.12, depthWrite: false }));
+  buffer.position.set(GT.x, 3.35, GT.z); scene.add(buffer);
+  const gel = new THREE.Mesh(new THREE.BoxGeometry(GEL_W + 0.6, 0.7, GEL_L + 0.8), plastic(0xc9d6de, { roughness: 0.7 }));
+  gel.position.set(GT.x, 2.7, GT.z); scene.add(tip(gel, "Agarose gel", "gel"));
+  gelCanvas = document.createElement("canvas"); gelCanvas.width = 660; gelCanvas.height = 480;
+  gelTex = new THREE.CanvasTexture(gelCanvas); gelTex.colorSpace = THREE.SRGBColorSpace;
+  const top = new THREE.Mesh(new THREE.PlaneGeometry(GEL_W, GEL_L), new THREE.MeshBasicMaterial({ map: gelTex, toneMapped: false }));
+  top.rotation.x = -Math.PI / 2; top.position.set(GT.x, 3.07, GT.z); scene.add(top);
+  gelWellsGroup = new THREE.Group(); scene.add(gelWellsGroup);
+  // electrodes: black (-) near the wells, red (+) at the far end; DNA runs to red
+  const black = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 14), plastic(0x222222));
+  black.position.set(GT.x - 7.6, 4.4, GT.z - 5.2);
+  const red = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 1.2, 14), plastic(0xc0392b));
+  red.position.set(GT.x - 7.6, 4.4, GT.z + 5.2);
+  scene.add(tip(black, "Cathode (-): wells are on this side", "gel"), tip(red, "Anode (+): DNA moves this way", "gel"));
+  const ps = rbox(8, 5, 7, plastic(0xd9dde3), 0.4);
+  const PS = new THREE.Vector3(GT.x - 15, 0, GT.z);
+  ps.position.set(PS.x, 2.5, PS.z); scene.add(tip(ps, "Power supply", "power"));
+  psCanvas = document.createElement("canvas"); psCanvas.width = 320; psCanvas.height = 160;
+  psTex = new THREE.CanvasTexture(psCanvas); psTex.colorSpace = THREE.SRGBColorSpace;
+  const psScreen = new THREE.Mesh(new THREE.PlaneGeometry(5, 2.5), new THREE.MeshBasicMaterial({ map: psTex, toneMapped: false }));
+  psScreen.position.set(PS.x, 3.1, PS.z + 3.52); scene.add(psScreen);
+  psLed = new THREE.Mesh(new THREE.SphereGeometry(0.25, 12, 10), new THREE.MeshBasicMaterial({ color: 0x555555 }));
+  psLed.position.set(PS.x + 3, 1.2, PS.z + 3.55); scene.add(psLed);
+  const wire = (from, to, color) => {
+    const mid = from.clone().lerp(to, 0.5); mid.y += 4;
+    const curve = new THREE.CatmullRomCurve3([from, mid, to]);
+    scene.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.12, 8), plastic(color)));
+  };
+  wire(new THREE.Vector3(GT.x - 7.6, 5, GT.z - 5.2), new THREE.Vector3(PS.x + 2, 2, PS.z + 3.5), 0x222222);
+  wire(new THREE.Vector3(GT.x - 7.6, 5, GT.z + 5.2), new THREE.Vector3(PS.x + 3.5, 2, PS.z + 3.5), 0xc0392b);
+}
+function drawPowerSupply(volts, minutesLeft) {
+  const c = psCanvas, x = c.getContext("2d");
+  x.fillStyle = "#102018"; x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = volts ? "#7ef2b0" : "#3c5a4a"; x.font = "bold 46px monospace";
+  x.fillText(`${String(volts).padStart(3, " ")} V`, 24, 66);
+  x.font = "bold 34px monospace";
+  x.fillText(`${minutesLeft.toFixed(0).padStart(2, "0")} min`, 24, 128);
+  psTex.needsUpdate = true;
+  psLed.material.color.setHex(volts ? 0x30d060 : 0x555555);
+}
+
+// =====================================================================
+// ANIMATION ENGINE (simple tweens processed every frame)
+// =====================================================================
+const tweens = [];
+function tween(obj, prop, to, ms) {
+  return new Promise(resolve => {
+    const v = obj[prop];
+    const from = v.clone ? v.clone() : v;
+    tweens.push({ obj, prop, from, to: to.clone ? to.clone() : to, ms: Math.max(1, ms * speed * burst), t0: performance.now(), resolve });
+  });
+}
+let speed = 1;                        // user setting: 1 normal, 0.35 fast, 0 off
+let burst = 1;                        // extra speed-up for long repeated actions
+function stepTweens(now) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const t = tweens[i], k = Math.min(1, (now - t.t0) / t.ms);
+    const e = k < 0.5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+    if (t.from.isVector3) t.obj[t.prop].lerpVectors(t.from, t.to, e);
+    else if (t.from.isEuler) t.obj[t.prop].set(t.from.x + (t.to.x - t.from.x) * e, t.from.y + (t.to.y - t.from.y) * e, t.from.z + (t.to.z - t.from.z) * e);
+    else t.obj[t.prop] = t.from + (t.to - t.from) * e;
+    if (k >= 1) { tweens.splice(i, 1); t.resolve(); }
+  }
+}
+const move = (obj, v, ms = 420) => tween(obj, "position", v, ms);
+const above = (p, y) => new THREE.Vector3(p.x, y, p.z);
+async function press(stop = 1) {    // stop 1 = first stop (aspirate), stop 2 = blow-out (dispense)
+  const b = pipette.userData.button;
+  await tween(b, "position", new THREE.Vector3(0, stop === 1 ? 10.2 : 9.9, 0), 160);
+  await tween(b, "position", new THREE.Vector3(0, 10.6, 0), stop === 1 ? 380 : 160);
+}
+async function flyTo(pos, target, ms = 1100) {
+  await Promise.all([tween(camera, "position", pos, ms), tween(controls, "target", target, ms)]);
+}
+const VIEWS = {
+  overview: [new THREE.Vector3(0, 52, 66), new THREE.Vector3(0, 2, -2)],
+  bench:    [new THREE.Vector3(-10, 26, 38), new THREE.Vector3(-8, 2, 8)],
+  cycler:   [new THREE.Vector3(18, 30, 22), new THREE.Vector3(18, 7, -12)],
+  gel:      [new THREE.Vector3(-30, 26, 10), new THREE.Vector3(-30, 2, -13)],
+};
+
+// pipette helpers ------------------------------------------------------
+async function takeTip() {
+  if (!tips.length) refillTips();
+  const t = tips.shift();
+  await move(pipette, above(t.position, 10));
+  await move(pipette, above(t.position, t.position.y + TIP_LEN + 0.05), 260);
+  scene.remove(t);
+  heldTip = new THREE.Mesh(tipGeo, tipMat);
+  heldTip.position.y = -TIP_LEN + 0.15;
+  pipette.add(heldTip);
+  await move(pipette, above(t.position, 10), 260);
+}
+function fillTip(color) {           // liquid drawn up into the tip
+  if (!heldTip) return;
+  const l = new THREE.Mesh(new THREE.CylinderGeometry(0.14, 0.05, 0.7, 14), plastic(color, { transparent: true, opacity: 0.9 }));
+  l.position.y = 0.4; l.name = "tipLiquid"; heldTip.add(l);
+}
+function emptyTip() { const l = heldTip?.getObjectByName("tipLiquid"); if (l) heldTip.remove(l); }
+async function ejectTip() {
+  await move(pipette, above(WASTE, 11));
+  const w = new THREE.Vector3(); heldTip.getWorldPosition(w);
+  pipette.remove(heldTip); heldTip.position.copy(w); scene.add(heldTip);
+  const t = heldTip; heldTip = null;
+  await tween(t, "position", above(WASTE, 1), 300);
+  scene.remove(t);
+}
+
+// =====================================================================
+// TUBES
+// =====================================================================
+function buildTubes(n) {
+  const old = S.tubes;
+  old.forEach(t => { scene.remove(t.obj.group); [t.obj.body, t.obj.cap].forEach(unhover); });
+  const pairs = Object.keys(S.pairs), temps = Object.keys(S.templates);
+  S.tubes = Array.from({ length: n }, (_, i) => {
+    const p = old[i];
+    const t = { name: p?.name ?? `S${i + 1}`, template: p?.template ?? temps[0], pair: p?.pair ?? pairs[i % pairs.length],
+                well: p?.well ?? Math.min(i + 1, GRADIENT_WELLS), added: new Set(), volume: 0 };
+    t.obj = makePcrTube();
+    const capCol = TUBE_CAPS[i % TUBE_CAPS.length];
+    t.obj.cap.material.color.setHex(capCol); t.obj.plug.material.color.setHex(capCol);
+    t.obj.capText = capLabel(t.obj.cap, 0.52, t.name, "#" + new THREE.Color(capCol).getHexString());
+    t.obj.group.position.copy(rackSlot(i));
+    for (const m of [t.obj.body, t.obj.cap]) { m.userData.tube = i; hoverables.push(m); }
+    scene.add(t.obj.group);
+    return t;
+  });
+  S.selected = null;
+}
+function tubeTip(i) {
+  const t = S.tubes[i];
+  return `${t.name} · ${t.volume.toFixed(1)} uL · ${t.added.size ? [...t.added].map(labelOf).join(", ") : "empty"}`;
+}
+function refreshLiquid(t) {
+  t.obj.liquid.visible = t.volume > 0;
+  if (t.volume > 0) {
+    t.obj.liquid.geometry.dispose();
+    t.obj.liquid.geometry = liquidGeometry(heightForVolume(t.volume));
+  }
+  const color = mixParts().some(k => t.added.has(k)) ? 0xf0a2c6 : [...t.added].some(k => k.startsWith("tpl:")) ? 0xc7b3ee : 0xb9e2f6;
+  t.obj.liquid.material.color.setHex(color);
+}
+
+// =====================================================================
+// STEPS
+// =====================================================================
+const STEPS = ["Set up", "Pipette", "Program", "Run PCR", "Gel setup", "Load gel", "Run gel", "Image"];
+
+function renderStepBar() {
+  $("steps").innerHTML = STEPS.map((x, i) =>
+    `<span class="chip ${i === S.step ? "now" : i <= S.reached ? "done" : ""}" data-step="${i}"
+       style="cursor:${canGo(i) ? "pointer" : "default"}" title="${canGo(i) ? "Go to this step" : ""}">${i + 1}. ${x}</span>`).join("");
+  $("steps").querySelectorAll(".chip").forEach(c => c.onclick = () => {
+    const i = +c.dataset.step;
+    if (!S.busy && canGo(i) && i !== S.step) go(i);
+  });
+}
+// You can jump back to anything you have reached; gel steps need a finished PCR
+const canGo = (i) => i <= S.reached && (i < 4 || !!S.pcr);
+function card(title, text, actions) {
+  $("cardTitle").textContent = title; $("cardText").innerHTML = text;
+  $("cardActions").innerHTML = "";
+  for (const a of actions) {
+    const b = document.createElement("button");
+    b.textContent = a.label; if (a.primary) b.className = "primary"; if (a.disabled) b.disabled = true;
+    b.onclick = () => { if (!S.busy || a.always) a.do(); };
+    $("cardActions").appendChild(b);
+  }
+}
+function progress(frac) {
+  $("progress").style.display = frac === null ? "none" : "block";
+  $("progress").firstElementChild.style.width = `${Math.round((frac ?? 0) * 100)}%`;
+}
+async function go(step) {
+  $("results").style.display = "none";
+  if (step < 7) { sun.intensity = 1.6; hemi.intensity = 0.7; scene.background.setHex(0xd9e1ea); document.body.classList.remove("dark"); }
+  if (step <= 5) { S.loaded = []; drawGel(0); }
+  if (step <= 1) { S.tubes.forEach(t => setCap(t, false)); S.selected = null; }
+  S.step = step; S.reached = Math.max(S.reached, step);
+  renderStepBar(); progress(null); $("side").innerHTML = ""; $("side").onchange = null;
+  await [stepSetup, stepPipette, stepProgram, stepRun, stepGelSetup, stepLoadGel, stepRunGel, stepImage][step]();
+}
+
+// ---- 1. setup ----
+function stepSetup(stay) {
+  if (!stay) flyTo(...VIEWS.overview);
+  const s = S.setup, opt = (list, v) => list.map(x => `<option ${x == v ? "selected" : ""}>${x}</option>`).join("");
+  $("side").innerHTML = `
+    <h3>Templates</h3>
+    <button id="b_demo">Load demo data</button>
+    <label>Upload FASTA file(s)</label><input id="f_file" type="file" accept=".fa,.fasta,.fna,.txt" multiple>
+    <label>Or paste FASTA</label><textarea id="f_paste" rows="3" placeholder=">my_gene&#10;ATGC..."></textarea>
+    <button id="b_paste">Add pasted sequence</button>
+    <table id="tplList"></table>
+    <h3 style="margin-top:14px">Primer pairs (5' to 3')</h3>
+    <table id="pairList"></table>
+    <button id="b_addPair">+ Add pair</button>
+    <h3 style="margin-top:14px">Reaction setup (per tube)</h3>
+    <div class="grid2">
+      <div><label>Setup</label><select id="f_mode">${opt(["2X master mix", "Manual components"], s.mode)}</select></div>
+      <div><label>Reaction volume (uL)</label><select id="f_volume">${opt([10, 20, 25, 50], s.volume)}</select></div>
+      <div><label>Each primer (pmol)</label><input id="f_primerPmol" type="number" step="0.5" value="${s.primerPmol}"></div>
+      <div><label>Primer stock (pmol/uL)</label><input id="f_primerStock" type="number" value="${s.primerStock}"></div>
+      <div><label>Template (uL)</label><input id="f_templateUl" type="number" step="0.5" value="${s.templateUl}"></div>
+      <div><label>Template (ng/uL)</label><input id="f_templateNg" type="number" value="${s.templateNg}"></div>
+      ${componentInputs("f")}
+    </div>
+    <table id="recipe"></table>
+    <p class="muted">${finalConcentrations()}</p>${warningHtml()}
+    <h3 style="margin-top:14px">Tubes</h3>
+    <label>Number of tubes (max ${MAX_TUBES})</label><input id="f_n" type="number" min="1" max="${MAX_TUBES}" value="${S.tubes.length}">
+    <table id="tubeList"></table>`;
+  const renderRecipe = () => {
+    const vol = volumes();
+    const stock = STOCKS();
+    $("recipe").innerHTML = `<tr><th>Component</th><th>Stock</th><th>uL per tube</th></tr>` +
+      componentTypes().map(k => `<tr><td>${REAGENTS[k].label}</td><td>${stock[k]}</td><td>${vol[k].toFixed(2)}</td></tr>`).join("") +
+      `<tr><td colspan="3" class="muted">On the cooling block: separate tubes for each primer of each pair and each template.</td></tr>`;
+  };
+  const renderTubes = () => {
+    const pairs = Object.keys(S.pairs), temps = Object.keys(S.templates);
+    $("tubeList").innerHTML = `<tr><th>Name</th><th>Template</th><th>Primer pair</th></tr>` + S.tubes.map((t, i) => `<tr>
+      <td><input data-i="${i}" data-f="name" value="${t.name}"></td>
+      <td><select data-i="${i}" data-f="template">${opt(temps, t.template)}</select></td>
+      <td><select data-i="${i}" data-f="pair">${opt(pairs, t.pair)}</select></td></tr>`).join("");
+  };
+  const renderTemplates = () => {
+    $("tplList").innerHTML = `<tr><th>Template</th><th>Length</th><th></th></tr>` +
+      Object.entries(S.templates).map(([k, v]) => `<tr><td>${k}</td><td>${v.length} bp</td>
+        <td><button data-deltpl="${k}" style="padding:1px 6px">x</button></td></tr>`).join("");
+  };
+  const renderPairs = () => {
+    $("pairList").innerHTML = `<tr><th>Pair</th><th>Forward</th><th>Reverse</th><th></th></tr>` +
+      Object.entries(S.pairs).map(([k, v]) => `<tr><td><input data-pair="${k}" data-k="name" value="${k}" style="width:46px"></td>
+        <td><input data-pair="${k}" data-k="forward" value="${v.forward}"></td>
+        <td><input data-pair="${k}" data-k="reverse" value="${v.reverse}"></td>
+        <td><button data-delpair="${k}" style="padding:1px 6px">x</button></td></tr>`).join("");
+  };
+  const refreshChoices = () => {
+    const temps = Object.keys(S.templates), pairs = Object.keys(S.pairs);
+    S.tubes.forEach(t => {
+      if (!temps.includes(t.template)) t.template = temps[0];
+      if (!pairs.includes(t.pair)) t.pair = pairs[0];
+    });
+    renderTemplates(); renderPairs(); renderTubes(); S.cocktails = {}; buildReagents();
+  };
+  const addFasta = async (text) => {
+    const r = await fetch("/api/fasta", { method: "POST", headers: { "Content-Type": "application/json" },
+                                          body: JSON.stringify({ text }) });
+    const d = await r.json();
+    if (!r.ok) { toast("FASTA problem: " + d.detail); return; }
+    Object.assign(S.templates, d.records);
+    scheduleRecord();
+    toast(`Added ${Object.keys(d.records).length} sequence(s).`);
+    refreshChoices();
+  };
+  const cleanPrimer = (seq) => {
+    const c = seq.toUpperCase().replace(/[^A-Z]/g, "");
+    if (!/^[ACGTN]+$/.test(c)) { toast("Primers may only contain A, C, G, T or N."); return null; }
+    return c;
+  };
+  renderRecipe(); refreshChoices();
+  $("side").onclick = (e) => {
+    const d = e.target.dataset;
+    if (e.target.id === "b_demo") { S.templates = { ...S.demo.templates }; S.pairs = structuredClone(S.demo.pairs); refreshChoices(); }
+    if (e.target.id === "b_paste" && $("f_paste").value.trim()) addFasta($("f_paste").value);
+    if (e.target.id === "b_addPair") {
+      let k = 1; while (S.pairs[`P${k}`]) k++;
+      S.pairs[`P${k}`] = { forward: "", reverse: "" }; renderPairs();
+    }
+    if (d.deltpl) { delete S.templates[d.deltpl]; refreshChoices(); }
+    if (d.delpair) { delete S.pairs[d.delpair]; refreshChoices(); }
+  };
+  $("side").onchange = async (e) => {
+    const id = e.target.id, d = e.target.dataset;
+    if (id === "f_file") { for (const f of e.target.files) await addFasta(await f.text()); e.target.value = ""; return; }
+    if (d.pair) {
+      if (d.k === "name") {
+        const name = e.target.value.trim();
+        if (!name || S.pairs[name]) { toast("Pair names must be unique."); renderPairs(); return; }
+        S.pairs = Object.fromEntries(Object.entries(S.pairs).map(([k, v]) => [k === d.pair ? name : k, v]));
+        S.tubes.forEach(t => { if (t.pair === d.pair) t.pair = name; });
+      } else {
+        const seq = cleanPrimer(e.target.value);
+        if (seq !== null) S.pairs[d.pair][d.k] = seq;
+      }
+      refreshChoices(); return;
+    }
+    if (id === "f_n") { buildTubes(Math.max(1, Math.min(MAX_TUBES, +e.target.value || 1))); S.cocktails = {}; buildReagents(); renderTubes(); return; }
+    if (id?.startsWith("f_") && id !== "f_paste") {
+      applySetupChange(id.slice(2), e.target.value, false);
+      stepSetup(true); return;
+    }
+    const i = +e.target.dataset.i, f = e.target.dataset.f;
+    if (f) {
+      S.tubes[i][f] = e.target.value;
+      if (f === "name") relabelCap(S.tubes[i], i); else { S.cocktails = {}; buildReagents(); }
+    }
+  };
+  card("Set up the reactions", "Choose how you will set up each PCR and what goes in each tube. Templates and primer pairs come from the demo data.",
+    [{ label: "Next: pipette", primary: true, do: () => go(1) }]);
+}
+
+// ---- 2. pipette ----
+function stepPipette() {
+  flyTo(...VIEWS.bench);
+  buildReagents();
+  renderChecklist();
+  setTimeout(pipetModeSwitch, 0);
+  const cocktail = S.pipetMode === "cocktail";
+  card(cocktail ? "Pipette with a cocktail per gene" : "Pipette each tube",
+    cocktail
+      ? `First prepare one cocktail per primer pair (master mix + that pair's primers + water) for all its tubes plus one extra.
+         Then give each tube the same volume of its cocktail and add only the template, or water for the NTC.
+         <br><span class='muted'>This is how most labs work: fewer pipetting steps, less error, identical conditions in every tube of a gene.</span>`
+      : `Click a tube in the rack, then a reagent on the cooling block. Fresh tip each time, first stop to draw up, blow-out to dispense. Glowing items show what to click next.
+         <br><span class='muted'>Leave out template for a no-template control (NTC). A band there means contamination or primer dimer.</span>`,
+    [{ label: "Back", do: () => go(0) },
+     ...(cocktail ? [{ label: "Prepare cocktails", primary: !Object.values(S.cocktails).some(c => c.made), do: prepareCocktails }] : []),
+     { label: "Fill selected tube", do: fillSelected },
+     { label: "Discard selected tube", do: discardSelected },
+     { label: "Fill all tubes", do: fillAll },
+     { label: "Next: program", primary: true, do: () => {
+         const empty = S.tubes.filter(t => !t.volume).map(t => t.name);
+         if (empty.length) toast(`Empty tubes: ${empty.join(", ")}`);
+         go(2);
+       } }]);
+}
+function pipetModeSwitch() {
+  const el = document.createElement("div");
+  el.className = "seg"; el.style.margin = "0 0 10px";
+  el.innerHTML = `<button data-m="components" class="${S.pipetMode === "components" ? "on" : ""}">Each component</button>
+                  <button data-m="cocktail" class="${S.pipetMode === "cocktail" ? "on" : ""}">Cocktail per gene</button>`;
+  el.onclick = (e) => {
+    const m = e.target.dataset.m;
+    if (!m || m === S.pipetMode || S.busy) return;
+    S.pipetMode = m;
+    S.tubes.forEach(t => { t.added.clear(); t.volume = 0; refreshLiquid(t); });
+    stepPipette();
+  };
+  $("cardText").prepend(el);
+}
+async function prepareCocktails() {
+  S.busy = true;
+  for (const pair of pairsInUse()) {
+    const n = S.tubes.filter(t => t.pair === pair).length;
+    S.cocktails[pair] = { made: false, tubes: n };
+    buildReagents();
+    const dst = reagentObjs[`mix:${pair}`];
+    const parts = cocktailParts(pair);
+    for (let i = 0; i < parts.length; i++) {
+      await takeTip();
+      const src = reagentObjs[parts[i]].group.position;
+      await move(pipette, above(src, 11));
+      await move(pipette, above(src, src.y + 1.6 + TIP_LEN), 260);
+      await press(); fillTip(colourOf(parts[i]));
+      await move(pipette, above(src, 11), 240);
+      const d = dst.group.position;
+      await move(pipette, above(d, 11));
+      await move(pipette, above(d, d.y + 2.6 + TIP_LEN), 260);
+      press(2); emptyTip();
+      setBigLiquid(dst, (i + 1) / parts.length * 0.8);
+      await move(pipette, above(d, 11), 240);
+      await ejectTip();
+    }
+    for (let k = 0; k < 4; k++) {          // flick to mix
+      await tween(dst.group, "rotation", new THREE.Euler(0, 0, k % 2 ? -0.25 : 0.25), 90);
+    }
+    await tween(dst.group, "rotation", new THREE.Euler(0, 0, 0), 90);
+    S.cocktails[pair].made = true;
+  }
+  await move(pipette, PIPETTE_HOME);
+  S.busy = false;
+  renderChecklist();
+  toast("Cocktails ready. Now give each tube its cocktail, then its template (or NTC water).");
+}
+
+function renderChecklist() {
+  if (S.step !== 1) return;
+  const types = componentTypes(), short = { "master mix": "MM", buffer: "Buf", mgcl2: "Mg", dntps: "dNTP", taq: "Taq",
+    "forward primer": "Fwd", "reverse primer": "Rev", template: "Tmpl", water: "H2O" };
+  const cell = (t, type) => {
+    const k = [...t.added].find(x => typeOf(x) === type);
+    if (!k) return '<td class="dash">-</td>';
+    const which = k.includes(":") ? k.split(":")[1] : "";
+    const wrong = k.includes(":") && !plannedFor(t).includes(k);
+    return `<td class="tick" style="${wrong ? "color:#b3261e" : ""}" title="${labelOf(k)}">&#10003; ${which}</td>`;
+  };
+  const extra = S.setup.mode === "2X master mix" ? "" : " (manual components)";
+  const cocktailBox = S.pipetMode !== "cocktail" ? "" : `<div class="box"><h3>Cocktail per primer pair</h3>
+    <table><tr><th>Component</th><th>Per tube (uL)</th>${pairsInUse().map(p => {
+      const n = S.tubes.filter(t => t.pair === p).length;
+      return `<th>Pair ${p}: ${n}+1 tubes</th>`; }).join("")}</tr>
+    ${cocktailParts("X").map(k => `<tr><td>${labelOf(k).replace(" X", "")}</td><td>${volumeOf(k).toFixed(2)}</td>
+      ${pairsInUse().map(p => `<td>${(volumeOf(k) * (S.tubes.filter(t => t.pair === p).length + 1)).toFixed(2)}</td>`).join("")}</tr>`).join("")}
+    <tr><td><b>Cocktail per tube</b></td><td><b>${(S.setup.volume - volumes().template).toFixed(2)}</b></td><td colspan="9" class="muted">then add ${volumes().template} uL template or water</td></tr>
+    </table>${pairsInUse().map(p => `<span class="tag ${S.cocktails[p]?.made ? "yes" : "no"}">Cocktail ${p}: ${S.cocktails[p]?.made ? "ready" : "not made"}</span> `).join("")}</div>`;
+  $("side").innerHTML = `<div class="box"><h3>Pipetting method</h3>
+    <select id="pipMode"><option value="components" ${S.pipetMode === "components" ? "selected" : ""}>Each component into each tube</option>
+      <option value="cocktail" ${S.pipetMode === "cocktail" ? "selected" : ""}>Cocktail per primer pair, then template</option></select>
+    <p class="muted">Reaction setup: ${S.setup.mode}${extra}, ${S.setup.volume} uL.</p></div>
+    ${cocktailBox}
+    <div class="box"><h3>Checklist</h3>
+    <table><tr><th>Tube</th><th>Plan</th>${types.map(k => `<th>${short[k]}</th>`).join("")}<th>uL</th></tr>
+    ${S.tubes.map((t, i) => `<tr class="${i === S.selected ? "sel" : ""}"><td>${t.name}</td>
+      <td class="muted">${t.pair} / ${t.template.slice(0, 10)}</td>
+      ${types.map(k => cell(t, k)).join("")}<td>${t.volume.toFixed(1)}</td></tr>`).join("")}</table>
+    <p class="muted">Target ${S.setup.volume} uL per tube. A red tick means a primer or template different from the plan was added.</p></div>`;
+  $("side").onchange = (e) => {
+    if (e.target.id !== "pipMode") return;
+    S.pipetMode = e.target.value;
+    S.tubes.forEach(t => { t.added.clear(); t.volume = 0; refreshLiquid(t); });
+    stepPipette();
+  };
+}
+function relabelCap(t, i) {
+  t.obj.cap.remove(t.obj.capText);
+  t.obj.capText = capLabel(t.obj.cap, 0.52, t.name, "#" + new THREE.Color(TUBE_CAPS[i % TUBE_CAPS.length]).getHexString());
+}
+function setCap(t, open, ms = 260) { return tween(t.obj.hinge, "rotation", new THREE.Euler(open ? -2.1 : 0, 0, 0), ms); }
+function selectTube(i) {
+  if (S.selected !== null && S.selected !== i) setCap(S.tubes[S.selected], false);
+  setCap(S.tubes[i], true);
+  S.selected = i;
+  S.tubes.forEach((t, k) => t.obj.body.material.emissive.setHex(k === i ? 0x1d4f8a : 0x000000));
+  renderChecklist();
+}
+async function pipetteInto(key) {
+  if (S.selected === null) { toast("Click a tube in the rack first."); return; }
+  const t = S.tubes[S.selected];
+  if (key.startsWith("mix:") && !S.cocktails[key.slice(4)]?.made) { toast("Prepare the cocktail first."); return; }
+  const parts = key.startsWith("mix:") ? cocktailParts(key.slice(4)) : [key];
+  if (key.startsWith("mix:") && parts.some(k => t.added.has(k) || [...t.added].some(x => typeOf(x) === typeOf(k) && typeOf(k) !== "water"))) {
+    toast(`${t.name} already has some of the cocktail's components.`); return;
+  }
+  if (key === "ntc water" && [...t.added].some(k => k.startsWith("tpl:"))) { toast(`${t.name} already has template.`); return; }
+  if (key.startsWith("tpl:") && t.added.has("ntc water")) { toast(`${t.name} is an NTC (water added instead of template).`); return; }
+  if (t.added.has(key)) { toast(`${labelOf(key)} is already in ${t.name}.`); return; }
+  const sameType = [...t.added].find(x => x !== key && typeOf(x) === typeOf(key) && typeOf(key) !== "water");
+  if (sameType) { toast(`${t.name} already has ${labelOf(sameType)}. This bench runs one primer pair and one template per tube.`); return; }
+  if (key.includes(":") && !plannedFor(t).includes(key)) toast(`Note: ${t.name} was planned with pair ${t.pair} and template ${t.template}. Using what you add.`);
+  S.busy = true;
+  await takeTip();
+  const src = reagentObjs[key].group.position;
+  await move(pipette, above(src, 11));
+  await move(pipette, above(src, src.y + 1.6 + TIP_LEN), 300);
+  await press(); fillTip(colourOf(key));
+  await move(pipette, above(src, 11), 280);
+  const dst = t.obj.group.position;
+  await move(pipette, above(dst, 10));
+  await move(pipette, above(dst, dst.y + 0.9 + TIP_LEN), 300);
+  parts.forEach(k => t.added.add(k));
+  if (key === "ntc water") t.added.add(key);
+  const from = t.volume, to = from + volumeOf(key);
+  press(2); emptyTip();
+  for (let k = 1; k <= 8; k++) { t.volume = from + (to - from) * k / 8; refreshLiquid(t); await sleep(35 * speed); }
+  await move(pipette, above(dst, 10), 280);
+  await ejectTip();
+  await move(pipette, PIPETTE_HOME);
+  S.busy = false;
+  renderChecklist();
+}
+function fillTube(t) {
+  const plan = plannedFor(t);
+  t.added = new Set(plan); t.volume = plan.reduce((a, k) => a + volumeOf(k), 0); refreshLiquid(t);
+}
+function fillSelected() { if (S.selected === null) return toast("Click a tube first."); fillTube(S.tubes[S.selected]); renderChecklist(); }
+function discardSelected() {          // throw the tube away and start a fresh one
+  if (S.selected === null) return toast("Click a tube first.");
+  const t = S.tubes[S.selected];
+  t.added = new Set(); t.volume = 0; refreshLiquid(t); renderChecklist();
+  toast(`${t.name} discarded. A fresh empty tube is in its place.`);
+}
+function fillAll() { S.tubes.forEach(fillTube); renderChecklist(); }
+
+// ---- 3. program ----
+function stepProgram() {
+  flyTo(...VIEWS.cycler);
+  tween(lidHinge, "rotation", new THREE.Euler(-1.95, 0, 0), 300);
+  const p = S.program;
+  const num = (k, step = 1) => `<input id="p_${k}" type="number" step="${step}" value="${p[k]}">`;
+  const mins = (sec) => sec >= 60 ? ` <span class="muted">(${+(sec / 60).toFixed(1)} min)</span>` : "";
+  $("side").innerHTML = `<div class="box"><h3>Thermocycler program</h3>
+    <label>PCR type</label><select id="p_type"><option ${p.type === "Conventional" ? "selected" : ""}>Conventional</option>
+      <option ${p.type === "Gradient" ? "selected" : ""}>Gradient</option></select>
+    <table class="prog">
+      <tr><th>Step</th><th>Temp (C)</th><th>Time (s)</th><th>Cycles</th></tr>
+      <tr><td class="stage" colspan="4">Stage 1: start</td></tr>
+      <tr class="one"><td>Initial denaturation</td><td>${num("initT")}</td><td>${num("initS")}${mins(p.initS)}</td><td>1</td></tr>
+      <tr><td class="stage" colspan="4">Stage 2: amplification (repeated)</td></tr>
+      <tr class="den"><td>Denaturation</td><td>${num("denT")}</td><td>${num("denS")}</td>
+        <td class="cyc" rowspan="3">x ${num("cycles")}</td></tr>
+      <tr class="ann"><td>Annealing</td><td>${p.type === "Gradient" ? "gradient" : num("annT", 0.5)}</td><td>${num("annS")}</td></tr>
+      <tr class="ext"><td>Extension</td><td>${num("extT")}</td><td>${num("extS")}</td></tr>
+      <tr><td class="stage" colspan="4">Stage 3: finish</td></tr>
+      <tr class="one"><td>Final extension</td><td>${p.extT}</td><td>${num("finS")}${mins(p.finS)}</td><td>1</td></tr>
+      <tr class="one"><td>Hold</td><td>4</td><td>until removed</td><td>-</td></tr>
+    </table>
+    <p class="muted" id="taHint">Loading primer Tm...</p>
+    <p class="muted">Total: about ${totalMinutes()} min. Extension of ${p.extS} s covers products up to about ${Math.round(p.extS / 60 * 1000)} bp (Taq ~1 kb/min).</p>
+    </div>
+    <div class="box"><h3>Profile</h3><canvas id="profileCanvas" width="640" height="200" style="width:100%"></canvas></div>
+    <div id="gradBox"></div>`;
+  drawProfile($("profileCanvas"));
+  if (p.type === "Gradient") {
+    if (!p.wells.length) fillGradient();
+    $("gradBox").innerHTML = `<div class="box"><h3>Gradient</h3>
+      <div class="grid2"><div><label>Gradient low (C)</label>${num("gLow", 0.5)}</div>
+      <div><label>Gradient high (C)</label>${num("gHigh", 0.5)}</div></div>
+      <table><tr><th>Well</th><th>Ta (C)</th><th>Tube(s)</th></tr>${p.wells.map((w, i) => `<tr><td>${i + 1}</td>
+        <td><input data-w="${i}" type="number" step="0.1" value="${w}"></td>
+        <td>${S.tubes.filter(t => t.well === i + 1).map(t => t.name).join(", ") || '<span class="muted">empty</span>'}</td></tr>`).join("")}</table>
+      <label>Tube positions</label>
+      <table><tr><th>Tube</th><th>Gradient well</th></tr>${S.tubes.map((t, i) => `<tr><td>${t.name}</td>
+        <td><input data-tw="${i}" type="number" min="1" max="${GRADIENT_WELLS}" value="${t.well}"></td></tr>`).join("")}</table></div>`;
+  }
+  $("side").onchange = (e) => {
+    const id = e.target.id;
+    if (id === "p_type") { p.type = e.target.value; stepProgram(); return; }
+    if (id?.startsWith("p_")) {
+      p[id.slice(2)] = +e.target.value;
+      if (["gLow", "gHigh"].includes(id.slice(2))) fillGradient();
+      stepProgram(); drawScreen(); return;
+    }
+    if (e.target.dataset.w) { p.wells[+e.target.dataset.w] = +e.target.value; drawProfile($("profileCanvas")); }
+    if (e.target.dataset.tw) { moveToHolder(+e.target.dataset.tw, e.target.value); stepProgram(); }
+  };
+  fetch("/api/primers", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pairs: S.pairs, recipe: recipeJson() }) }).then(r => r.json()).then(info => {
+      if ($("taHint")) $("taHint").innerHTML = "Suggested Ta (lowest primer Tm - 3 C): " +
+        Object.entries(info).map(([k, v]) => `pair ${k}: <b>${v.suggested_ta} C</b>`).join(", ");
+    }).catch(() => {});
+  drawScreen();
+  card("Set the program",
+    `Stage 1 opens the DNA fully. Stage 2 repeats three steps: <b>denaturation</b> separates the strands, <b>annealing</b> lets primers bind,
+     <b>extension</b> lets the polymerase copy. Each cycle can double the product. Stage 3 finishes incomplete copies, then the block holds at 4 C.
+     <br><span class="muted">Conventional: one annealing temperature for all tubes. Gradient: each well gets its own, to find the best one.</span>`,
+    [{ label: "Back", do: () => go(1) }, { label: "Next: run PCR", primary: true, do: () => go(3) }]);
+}
+
+// One cycle drawn as a temperature-time chart, with the start and finish stages
+function drawProfile(c) {
+  if (!c) return;
+  const p = S.program, x = c.getContext("2d"), W = c.width, H = c.height;
+  const ann = p.type === "Gradient" ? [Math.min(...p.wells), Math.max(...p.wells)] : [p.annT, p.annT];
+  const steps = [["Init", p.initT, p.initS, "#9aa4b1"], ["Den", p.denT, p.denS, "#d9534f"],
+                 ["Ann", ann[0], p.annS, "#3b7dd8"], ["Ext", p.extT, p.extS, "#e69a28"],
+                 ["Final", p.extT, p.finS, "#9aa4b1"], ["Hold", 4, 60, "#9aa4b1"]];
+  const widths = steps.map(s => Math.max(50, Math.sqrt(s[2]) * 12)), total = widths.reduce((a, b) => a + b, 0);
+  const y = (T) => H - 30 - T / 100 * (H - 80);
+  x.clearRect(0, 0, W, H); x.font = "16px system-ui"; x.lineWidth = 3;
+  let px = 20;
+  const cycStart = 20 + (widths[0] / total) * (W - 40), cycEnd = cycStart + ((widths[1] + widths[2] + widths[3]) / total) * (W - 40);
+  x.fillStyle = "#fff7e6"; x.fillRect(cycStart, 28, cycEnd - cycStart, H - 52);
+  x.fillStyle = "#8a5a00"; x.font = "bold 15px system-ui"; x.textAlign = "center";
+  x.fillText(`repeat x ${p.cycles} cycles`, (cycStart + cycEnd) / 2, 18);
+  x.textAlign = "left"; x.font = "15px system-ui";
+  steps.forEach(([label, T, sec, col], i) => {
+    const w = widths[i] / total * (W - 40);
+    x.strokeStyle = col; x.beginPath(); x.moveTo(px, y(T)); x.lineTo(px + w, y(T)); x.stroke();
+    if (i === 2 && ann[1] !== ann[0]) { x.setLineDash([5, 4]); x.beginPath(); x.moveTo(px, y(ann[1])); x.lineTo(px + w, y(ann[1])); x.stroke(); x.setLineDash([]); }
+    x.fillStyle = "#1b2330"; x.fillText(`${T}${i === 2 && ann[1] !== ann[0] ? "-" + ann[1] : ""}`, px + 4, y(T) - 8);
+    x.fillStyle = "#5f6b7a"; x.fillText(label, px + 4, H - 8);
+    if (i < steps.length - 1) { x.strokeStyle = "#c4cad2"; x.lineWidth = 1.5; x.beginPath(); x.moveTo(px + w, y(T)); x.lineTo(px + w, y(steps[i + 1][1])); x.stroke(); x.lineWidth = 3; }
+    px += w;
+  });
+}
+
+// ---- 4. run PCR ----
+function stepRun() {
+  flyTo(...VIEWS.cycler);
+  card("Load the block and run", "Caps close, tubes go into the block and the heated lid closes (it stops condensation on the caps). During the run the block glows with its temperature: red at denaturation, blue at annealing, orange at extension.",
+    [{ label: "Back", do: () => go(2) }, { label: "Load and run", primary: true, do: runPcr }]);
+}
+function profile() {
+  const p = S.program, ann = p.type === "Gradient" ? Math.min(...p.wells) : p.annT;
+  const seg = [{ T: p.initT, s: p.initS, label: "Initial denaturation" }];
+  for (let c = 1; c <= p.cycles; c++) seg.push({ T: p.denT, s: p.denS, label: "Denaturation", c },
+    { T: ann, s: p.annS, label: p.type === "Gradient" ? "Annealing (gradient)" : "Annealing", c }, { T: p.extT, s: p.extS, label: "Extension", c });
+  seg.push({ T: p.extT, s: p.finS, label: "Final extension" }, { T: 4, s: 1, label: "Hold 4 C" });
+  return seg;
+}
+function drawScreen(frac = null) {
+  const c = screenCanvas, x = c.getContext("2d"), p = S.program;
+  x.fillStyle = "#0e2a24"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#9ef0c8";
+  if (frac === null) {
+    x.font = "bold 26px monospace";
+    const ann = p.type === "Gradient" ? `${p.gLow}-${p.gHigh} G` : `${p.annT} C`;
+    ["PROGRAM", `Init  ${p.initT} C ${p.initS}s`, `Den   ${p.denT} C ${p.denS}s`, `Ann   ${ann} ${p.annS}s`,
+     `Ext   ${p.extT} C ${p.extS}s  x${p.cycles}`, `Final ${p.extT} C ${p.finS}s  Hold 4 C`]
+      .forEach((l, i) => x.fillText(l, 22, 42 + i * 42));
+  } else {
+    const seg = profile(), total = seg.reduce((a, s) => a + s.s, 0), now = frac * total;
+    const X0 = 30, W = 590, y = (T) => 280 - T * 1.85;
+    x.strokeStyle = "#245c4e"; [25, 50, 75, 100].forEach(T => { x.beginPath(); x.moveTo(X0, y(T)); x.lineTo(X0 + W, y(T)); x.stroke(); });
+    x.strokeStyle = "#9ef0c8"; x.lineWidth = 2; x.beginPath();
+    let t = 0, cur = seg[0];
+    for (const s of seg) { if (t > now) break; x.lineTo(X0 + t / total * W, y(s.T)); x.lineTo(X0 + Math.min(now, t + s.s) / total * W, y(s.T)); cur = s; t += s.s; }
+    x.stroke(); x.font = "bold 24px monospace";
+    x.fillText(`${cur.label}  ${cur.T} C`, 20, 34);
+    if (cur.c) x.fillText(`Cycle ${cur.c}/${p.cycles}`, 20, 64);
+    x.fillText(`${Math.round(frac * 100)}%`, 548, 34);
+  }
+  screenTex.needsUpdate = true;
+}
+async function runPcr() {
+  const problems = experimentProblems();
+  if (problems.length) { toast(problems.join(" ")); return; }
+  S.busy = true;
+  card("Running PCR", "Closing caps and loading the block...", []);
+  for (const t of S.tubes) tween(t.obj.hinge, "rotation", new THREE.Euler(0, 0, 0), 250);
+  await sleep(300 * speed);
+  for (let i = 0; i < S.tubes.length; i++) {
+    const t = S.tubes[i], col = S.program.type === "Gradient" ? t.well - 1 : i;
+    const target = blockSlot(col);
+    await move(t.obj.group, above(t.obj.group.position, 13), 220);
+    await move(t.obj.group, above(target, 13), 380);
+    await move(t.obj.group, target, 220);
+  }
+  await tween(lidHinge, "rotation", new THREE.Euler(0, 0, 0), 800);
+  tcLed.material.color.setHex(0xf0a020);
+
+  const request = postRun();
+  card("Running PCR", `Estimated real run time: about ${totalMinutes()} min. Shown here sped up.`, []);
+  const dur = 9000 * Math.max(speed, 0.05), t0 = performance.now();
+  while (performance.now() - t0 < dur) {
+    const f = (performance.now() - t0) / dur;
+    drawScreen(f); progress(f); heatBlock(tempAt(f)); await sleep(50);
+  }
+  heatBlock(25);
+  drawScreen(1); progress(1);
+  const data = await request;
+  tcLed.material.color.setHex(0x30c060);
+  await tween(lidHinge, "rotation", new THREE.Euler(-1.95, 0, 0), 800);
+  for (let i = 0; i < S.tubes.length; i++) {            // tubes back to the rack
+    const t = S.tubes[i];
+    await move(t.obj.group, above(t.obj.group.position, 13), 180);
+    await move(t.obj.group, above(rackSlot(i), 13), 320);
+    await move(t.obj.group, rackSlot(i), 180);
+  }
+  S.busy = false;
+  if (!data.ok) {
+    card("Run stopped", (data.errors || [data.detail]).join("<br>"), [{ label: "Back to setup", do: resetAll }]);
+    return;
+  }
+  S.pcr = data;
+  $("side").innerHTML = `<h3>PCR finished</h3><table><tr><th>Tube</th><th>Ta</th><th>Products</th><th>Dimer</th></tr>
+    ${data.results.map(r => `<tr><td>${r.tube}</td><td>${r.ta}</td><td>${r.products.map(p => p.size + (p.specific ? "" : "*")).join(", ") || "-"}</td>
+      <td>${r.dimers.map(d => "~" + d).join(", ") || "-"}</td></tr>`).join("")}</table>
+    <p class="muted">* off-target product. Sizes are known to the simulator; in the lab you would only see them on the gel.</p>`;
+  card("PCR done", "The tubes are back in the rack. Next, check them on an agarose gel.",
+    [{ label: "Next: gel setup", primary: true, do: () => go(4) }]);
+}
+function experimentBody() {
+  return { templates: S.templates, pairs: S.pairs, recipe: recipeJson(), program: programJson(),
+           gradient: S.program.type === "Gradient" ? S.program.wells : null,
+           tubes: S.tubes.map(tubeJson),
+           gel: gelJson() };
+}
+// Translate what was pipetted into what the engine needs
+function tubeJson(t) {
+  const find = (prefix) => [...t.added].find(k => k.startsWith(prefix))?.slice(prefix.length);
+  const fwd = find("fwd:"), rev = find("rev:"), tpl = find("tpl:");
+  const added = [...new Set([...t.added].map(typeOf))];
+  return { name: t.name, well: t.well, added,
+           template: tpl ?? t.template,
+           pair: fwd ?? rev ?? t.pair, forward_pair: fwd ?? t.pair, reverse_pair: rev ?? t.pair };
+}
+function experimentProblems() {
+  const p = [];
+  if (!Object.keys(S.templates).length) p.push("Add a template (FASTA) first.");
+  for (const k of pairsInUse()) {
+    const v = S.pairs[k];
+    if (v.forward.length < 10 || v.reverse.length < 10) p.push(`Primer pair ${k} needs a forward and a reverse sequence (10 bases or more).`);
+  }
+  if (S.tubes.some(t => !S.pairs[t.pair])) p.push("Every tube needs a primer pair.");
+  if (S.program.type === "Gradient") {
+    const seen = {};
+    S.tubes.forEach(t => { if (seen[t.well]) p.push(`Holder ${t.well} has both ${seen[t.well]} and ${t.name}: one tube per holder.`); seen[t.well] = t.name; });
+  }
+  if (S.tubes.every(t => !t.volume)) p.push("All tubes are empty.");
+  if (setupWarnings().some(w => w.err)) p.push("Fix the reaction setup first.");
+  return p;
+}
+async function postRun() {
+  const problems = experimentProblems();
+  if (problems.length) return { ok: false, errors: problems };
+  return fetch("/api/run", { method: "POST", headers: { "Content-Type": "application/json" },
+                             body: JSON.stringify(experimentBody()) }).then(r => r.json());
+}
+function tempAt(frac) {
+  const seg = profile(), total = seg.reduce((a, x) => a + x.s, 0);
+  let t = 0;
+  for (const x of seg) { t += x.s; if (t >= frac * total) return x.T; }
+  return 4;
+}
+function heatBlock(T) {           // cold = blue, ~72 C = orange, ~95 C = red (shown as a glow)
+  const c = new THREE.Color();
+  if (T < 40) c.setRGB(0.1, 0.25, 0.6);
+  else c.setHSL(Math.max(0, 0.6 - (T - 40) / 55 * 0.6), 0.9, 0.5);
+  tcBlock.material.emissive.copy(c);
+  tcBlock.material.emissiveIntensity = T <= 25 ? 0 : 0.35;
+}
+function totalMinutes() {
+  const p = S.program;
+  return Math.round((p.initS + p.cycles * (p.denS + p.annS + p.extS) + p.finS) / 60);
+}
+
+// ---- 5. gel setup ----
+function gelJson() {
+  const g = S.gel;
+  return { agarose: g.agarose, run_minutes: g.runMinutes, ladder: g.ladder, ladder_position: g.ladderPos, load_ul: g.loadUl };
+}
+function stepGelSetup() {
+  flyTo(...VIEWS.gel);
+  drawGel(0);
+  const g = S.gel, opt = (list, v) => list.map(x => `<option ${x == v ? "selected" : ""}>${x}</option>`).join("");
+  $("side").innerHTML = `<h3>Gel</h3>
+    <div class="grid2">
+      <div><label>Agarose (%)</label><select id="g_agarose">${opt([0.7, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0], g.agarose)}</select></div>
+      <div><label>Run time (min)</label><select id="g_runMinutes">${opt([20, 30, 40, 60], g.runMinutes)}</select></div>
+    </div>
+    <label>Ladder</label><select id="g_ladder">${opt(S.demo.ladders, g.ladder)}</select>
+    <div class="grid2">
+      <div><label>Ladder position</label><select id="g_ladderPos"><option value="first" ${g.ladderPos === "first" ? "selected" : ""}>First well</option>
+        <option value="both" ${g.ladderPos === "both" ? "selected" : ""}>Both ends</option></select></div>
+      <div><label>Load per well (uL)</label><input id="g_loadUl" type="number" min="1" max="${S.setup.volume}" value="${g.loadUl}"></div>
+    </div>
+    <p class="muted">Wells on the gel: ${S.tubes.length + (g.ladderPos === "both" ? 2 : 1)} (samples + ladder).</p>`;
+  $("side").onchange = (e) => {
+    const k = e.target.id.slice(2);
+    g[k] = ["ladder", "ladderPos"].includes(k) ? e.target.value : +e.target.value;
+    stepGelSetup();
+  };
+  card("Prepare the gel", "Higher agarose separates small fragments, lower agarose large ones. A longer run spreads bands apart but small fragments (like primer dimers) can run off the end. Pick a ladder that brackets your expected sizes.",
+    [{ label: "Next: load gel", primary: true, do: () => go(5) }]);
+}
+
+// ---- gel drawing (canvas on top of the 3D gel) ----
+function laneX(i, n) { return 60 + (i + 0.5) * (540 / n); }
+const cmToY = (cm, L) => 40 + cm / L * 420;
+function drawGel(frac, mode = "dye") {
+  const c = gelCanvas, x = c.getContext("2d");
+  const lay = S.gelData?.gel_layout, n = lay ? lay.wells.length : S.tubes.length + 1;
+  x.clearRect(0, 0, c.width, c.height);
+  x.fillStyle = mode === "uv" ? "#0b0b0b" : "#d4dfe6"; x.fillRect(0, 0, c.width, c.height);
+  for (let i = 0; i < n; i++) {                           // wells (dark slots); loaded wells are blue
+    x.fillStyle = mode === "uv" ? "#262626" : S.loaded?.[i] ? "#3a5fc8" : "#5d6b78";
+    x.fillRect(laneX(i, n) - 20, 24, 40, 14);
+  }
+  if (!lay) { gelTex.needsUpdate = true; return; }
+  const L = lay.gel_length_cm;
+  lay.wells.forEach((w, i) => {
+    if (!S.loaded?.[i]) return;
+    const cx = laneX(i, n);
+    if (mode === "dye") {                                 // loading dye moves; DNA is invisible without stain
+      const y = cmToY(Math.min(L, frac * lay.dye_cm), L);
+      x.fillStyle = "rgba(40,70,200,.9)"; x.fillRect(cx - 20, y - 5, 40, 10);
+      x.fillStyle = "rgba(40,70,200,.25)"; x.fillRect(cx - 20, 38, 40, Math.max(0, y - 43));
+    } else {
+      for (const b of w.bands) {
+        if (b.kind === "smear") {                      // haze from the well down past the product
+          const bottom = cmToY(Math.min(L, b.cm * 1.15) * frac, L);
+          const grad = x.createLinearGradient(0, 40, 0, bottom);
+          grad.addColorStop(0, `rgba(255,240,225,${b.alpha * 0.1})`); grad.addColorStop(1, `rgba(255,240,225,${b.alpha * 0.45})`);
+          x.fillStyle = grad; x.fillRect(cx - 18, 40, 36, Math.max(0, bottom - 40));
+          continue;
+        }
+        if (b.cm > L) continue;
+        const fuzzy = b.kind === "dimer" || b.kind === "primer";
+        const y = cmToY(b.cm * frac, L), h = b.kind === "primer" ? 16 : b.kind === "dimer" ? 12 : 5;
+        x.fillStyle = `rgba(255,${b.kind === "ladder" ? 236 : 245},${b.kind === "ladder" ? 210 : 230},${b.alpha})`;
+        x.shadowColor = "rgba(255,240,220,.9)"; x.shadowBlur = fuzzy ? 16 : 6;
+        if (fuzzy) x.globalAlpha = 0.6;
+        x.fillRect(cx - 20, y - h / 2, 40, h);
+        x.globalAlpha = 1;
+      }
+      x.shadowBlur = 0;
+    }
+  });
+  gelTex.needsUpdate = true;
+}
+
+// ---- 6. load gel ----
+async function stepLoadGel() {
+  flyTo(...VIEWS.gel);
+  S.loaded = [];
+  card("Load the gel", "Getting the gel layout...", []);
+  S.gelData = await postRun();
+  if (!S.gelData.ok) { card("Problem", (S.gelData.errors || [S.gelData.detail]).join("<br>"), [{ label: "Back", do: () => go(4) }]); return; }
+  buildReagents(["ladder"]);
+  drawGel(0);
+  const n = S.gelData.gel_layout.wells.length;
+  $("side").innerHTML = `<h3>Loading order</h3><table><tr><th>Well</th><th>Load</th></tr>
+    ${S.gelData.gel_layout.wells.map((w, i) => `<tr><td>${i + 1}</td><td>${w.kind === "ladder" ? "Ladder" : w.label}</td></tr>`).join("")}</table>
+    <p class="muted">${S.gel.loadUl} uL per well. ${n} wells.</p>`;
+  card("Load the gel", `Load the ladder and ${S.tubes.length} samples into the ${n} wells, one tip per well.`,
+    [{ label: "Back", do: () => go(4) },
+     { label: "Load quickly", do: () => loadGel(0.35) },
+     { label: "Load (watch)", primary: true, do: () => loadGel(1) }]);
+}
+function gelWellWorld(i, n) {
+  const x = GT.x - GEL_W / 2 + (laneX(i, n) / 660) * GEL_W;
+  const z = GT.z - GEL_L / 2 + (31 / 480) * GEL_L;
+  return new THREE.Vector3(x, 3.1, z);
+}
+async function loadGel(sp) {
+  S.busy = true; burst = sp;
+  const lay = S.gelData.gel_layout, n = lay.wells.length;
+  for (let i = 0; i < n; i++) {
+    const w = lay.wells[i];
+    await takeTip();
+    const sampleTube = w.kind === "ladder" ? null : S.tubes.find(t => t.name === w.label);
+    if (sampleTube) await setCap(sampleTube, true, 200);
+    const src = w.kind === "ladder" ? reagentObjs.ladder.group.position : sampleTube.obj.group.position;
+    const srcDepth = w.kind === "ladder" ? 1.6 : 0.9;
+    await move(pipette, above(src, 11));
+    await move(pipette, above(src, src.y + srcDepth + TIP_LEN), 260);
+    await press(); fillTip(0x3a5fc8);
+    await move(pipette, above(src, 11), 260);
+    if (sampleTube) setCap(sampleTube, false, 200);
+    const dst = gelWellWorld(i, n);
+    await move(pipette, above(dst, 11));
+    await move(pipette, above(dst, dst.y + TIP_LEN - 0.2), 260);
+    await press(2); emptyTip();
+    S.loaded[i] = true; drawGel(0.02);
+    await move(pipette, above(dst, 11), 240);
+    await ejectTip();
+  }
+  await move(pipette, PIPETTE_HOME);
+  burst = 1; S.busy = false;
+  card("Gel loaded", "Close the lid of the tank and switch on the power supply.",
+    [{ label: "Next: run gel", primary: true, do: () => go(6) }]);
+}
+
+// ---- 7. run gel ----
+function stepRunGel() {
+  flyTo(...VIEWS.gel);
+  drawPowerSupply(0, S.gel.runMinutes);
+  card("Run the gel", `DNA is negatively charged and moves from the black electrode (-) towards the red one (+). Run: 100 V for ${S.gel.runMinutes} min (sped up).`,
+    [{ label: "Switch on power", primary: true, do: runGel }]);
+}
+async function runGel() {
+  S.busy = true;
+  card("Gel running", "Watch the blue loading dye move. The DNA bands move too, but they are invisible until the gel is stained and imaged.", []);
+  const dur = 7000 * Math.max(speed, 0.08), t0 = performance.now();
+  while (performance.now() - t0 < dur) {
+    const f = (performance.now() - t0) / dur;
+    drawGel(f); drawPowerSupply(100, S.gel.runMinutes * (1 - f)); progress(f);
+    bubble();
+    await sleep(40);
+  }
+  drawGel(1); drawPowerSupply(0, 0); progress(null);
+  S.busy = false;
+  card("Run finished", "Power off. Now stain and image the gel to see the DNA.", [{ label: "Next: image gel", primary: true, do: () => go(7) }]);
+}
+const bubbles = [], bubbleGeo = new THREE.SphereGeometry(0.08, 6, 6), bubbleMat = clearPlastic({ opacity: 0.6 });
+function bubble() {           // small gas bubbles at the electrodes while the current flows
+  for (const z of [GT.z - 4.6, GT.z + 4.6]) {
+    const b = new THREE.Mesh(bubbleGeo, bubbleMat);
+    b.position.set(GT.x - 7 + Math.random() * 14, 2.4, z);
+    scene.add(b); bubbles.push({ b, born: performance.now() });
+  }
+}
+function stepBubbles(now) {
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const { b, born } = bubbles[i];
+    b.position.y += 0.02;
+    if (now - born > 900) { scene.remove(b); bubbles.splice(i, 1); }
+  }
+}
+
+// ---- 8. image ----
+function stepImage() {
+  flyTo(new THREE.Vector3(-28, 22, -6), new THREE.Vector3(-28, 2, -14));
+  card("Image the gel", "The gel is stained with a DNA dye and imaged under UV/blue light. Bands appear where DNA of each size stopped.",
+    [{ label: "Image gel", primary: true, do: imageGel }]);
+}
+async function imageGel() {
+  S.busy = true;
+  sun.intensity = 0.25; hemi.intensity = 0.2; scene.background.setHex(0x1a1d22); document.body.classList.add("dark");
+  for (let k = 0; k <= 20; k++) { drawGel(k / 20, "uv"); await sleep(40 * speed); }
+  S.busy = false;
+  card("Done", "Try other gel conditions in the panel on the right: the gel updates instantly. Or go back to any step from the bar at the top.",
+    [{ label: "Show results", primary: true, do: () => showResults(S.gelData) },
+     { label: "Run the gel again", do: () => go(5) }, { label: "New experiment", do: resetAll }]);
+  regelPanel();
+  showResults(S.gelData);
+}
+function regelPanel() {
+  const g = S.gel, opt = (list, v) => list.map(x => `<option ${x == v ? "selected" : ""}>${x}</option>`).join("");
+  $("side").innerHTML = `<div class="box"><h3>Try other gel conditions</h3>
+    <div class="grid2">
+      <div><label>Agarose (%)</label><select id="r_agarose">${opt([0.7, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0], g.agarose)}</select></div>
+      <div><label>Run time (min)</label><select id="r_runMinutes">${opt([10, 20, 30, 40, 50, 60, 75, 90], g.runMinutes)}</select></div>
+    </div>
+    <label>Ladder</label><select id="r_ladder">${opt(S.demo.ladders, g.ladder)}</select>
+    <div class="grid2">
+      <div><label>Ladder position</label><select id="r_ladderPos"><option value="first" ${g.ladderPos === "first" ? "selected" : ""}>First well</option>
+        <option value="both" ${g.ladderPos === "both" ? "selected" : ""}>Both ends</option></select></div>
+      <div><label>Load per well (uL)</label><input id="r_loadUl" type="number" min="1" max="${S.setup.volume}" value="${g.loadUl}"></div>
+    </div></div>
+    <div class="box"><h3>Gel image</h3><img id="r_img" style="width:100%" src="data:image/png;base64,${S.gelData.gel_png}">
+    ${S.gelData.notes.map(n => `<p class="muted">${n}</p>`).join("")}</div>`;
+  $("side").onchange = async (e) => {
+    const k = e.target.id.slice(2);
+    g[k] = ["ladder", "ladderPos"].includes(k) ? e.target.value : +e.target.value;
+    const d = await postRun();
+    if (!d.ok) { toast((d.errors || [d.detail]).join(" ")); return; }
+    S.gelData = d;
+    S.loaded = d.gel_layout.wells.map(() => true);
+    drawGel(1, "uv");
+    regelPanel();
+  };
+}
+function showResults(d) {
+  $("results").innerHTML = `<button id="closeR" style="float:right">Close</button>
+    <h2 style="margin:0 0 8px">Results</h2>
+    <table><tr><th>Tube</th><th>Ta (C)</th><th>Amplified</th><th>Products (bp)</th><th>Primer dimer (bp)</th><th>Notes</th></tr>
+    ${d.results.map(r => `<tr><td>${r.tube}</td><td>${r.ta}</td><td><span class="tag ${r.amplified ? "yes" : "no"}">${r.amplified ? "Yes" : "No"}</span></td>
+      <td>${r.products.map(p => p.size + (p.specific ? "" : " (off-target)")).join(", ") || "-"}</td>
+      <td>${r.dimers.map(x => "~" + x).join(", ") || "-"}</td><td class="muted">${r.messages.join(" ")}</td></tr>`).join("")}</table>
+    ${d.notes.map(n => `<p class="muted">${n}</p>`).join("")}
+    <img src="data:image/png;base64,${d.gel_png}" alt="Simulated agarose gel">
+    <a download="amplibench_gel.png" href="data:image/png;base64,${d.gel_png}">Download gel image</a>
+    <p class="muted">Rule-based simulation. Confirm with a real experiment.</p>`;
+  $("results").style.display = "block";
+  $("closeR").onclick = () => $("results").style.display = "none";
+}
+
+// =====================================================================
+// INTERACTION: hover tooltips, clicks, highlight of what to click next
+// =====================================================================
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+function pick(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  ptr.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  ray.setFromCamera(ptr, camera);
+  return ray.intersectObjects(hoverables, false)[0]?.object;
+}
+renderer.domElement.addEventListener("pointermove", (e) => {
+  const o = pick(e), tt = $("tooltip");
+  if (!o) { tt.style.display = "none"; renderer.domElement.style.cursor = ""; return; }
+  const act = o.userData.station && !S.busy ? stationAction(o.userData.station) : null;
+  tt.textContent = o.userData.tube !== undefined ? tubeTip(o.userData.tube)
+    : o.userData.tip + (act ? `  (click: ${act.label})` : "");
+  tt.style.display = "block"; tt.style.left = `${e.clientX + 14}px`; tt.style.top = `${e.clientY + 10}px`;
+  const clickable = !!act || (S.step === 1 && (o.userData.tube !== undefined || (o.userData.reagent && o.userData.reagent !== "ladder")));
+  renderer.domElement.style.cursor = clickable ? "pointer" : "";
+});
+function stationAction(st) {
+  const s = S.step, loaded = S.loaded?.length && S.loaded.every(Boolean);
+  if (st === "bench") return s === 1 ? null : { label: "go to pipetting", run: () => go(1) };
+  if (st === "cycler") {
+    if (s === 2) return { label: "next: run PCR", run: () => go(3) };
+    if (s === 3) return { label: "load and run", run: runPcr };
+    return { label: "set the program", run: () => go(2) };
+  }
+  if (!S.pcr) return { label: "run the PCR first", run: () => toast("Run the PCR first: click the thermocycler.") };
+  if (st === "power" && s === 6) return { label: "switch on power", run: runGel };
+  if (s === 7 && !document.body.classList.contains("dark")) return { label: "image the gel", run: imageGel };
+  if (s === 4) return { label: "next: load gel", run: () => go(5) };
+  if (s === 5) return loaded ? { label: "next: run gel", run: () => go(6) } : { label: "load the wells", run: () => loadGel(1) };
+  if (s === 6) return { label: "switch on power", run: runGel };
+  return { label: "gel setup", run: () => go(4) };
+}
+renderer.domElement.addEventListener("click", (e) => {
+  if (S.busy) return;
+  const o = pick(e);
+  if (!o) return;
+  if (o.userData.station && !(S.step === 1 && o.userData.station === "bench")) {
+    const a = stationAction(o.userData.station);
+    if (a) a.run();
+    return;
+  }
+  if (S.step !== 1) return;
+  if (o.userData.tube !== undefined) selectTube(o.userData.tube);
+  else if (o.userData.reagent && o.userData.reagent !== "ladder") pipetteInto(o.userData.reagent);
+});
+function pulse(now) {               // gently glow whatever should be clicked next
+  const glow = 0.25 + 0.25 * Math.sin(now / 250);
+  const onPipette = S.step === 1 && !S.busy;
+  Object.entries(reagentObjs).forEach(([k, r]) => {
+    const sel = S.selected !== null ? S.tubes[S.selected] : null;
+    const wanted = S.pipetMode === "cocktail" && sel
+      ? (sel.added.has(`fwd:${sel.pair}`) ? [`tpl:${sel.template}`] : [`mix:${sel.pair}`])
+      : sel ? plannedFor(sel) : [];
+    const on = onPipette && sel && wanted.includes(k) && !sel.added.has(k) && !(k.startsWith("mix:") && !S.cocktails[k.slice(4)]?.made);
+    r.cap.material.emissive.setHex(on ? 0x2c6bb0 : 0x000000); r.cap.material.emissiveIntensity = on ? glow : 0;
+  });
+  if (onPipette && S.selected === null) S.tubes.forEach(t => { t.obj.body.material.emissive.setHex(0x2c6bb0); t.obj.body.material.emissiveIntensity = glow; });
+  else S.tubes.forEach((t, i) => { t.obj.body.material.emissiveIntensity = i === S.selected ? 0.6 : 0; });
+}
+
+// =====================================================================
+// VIEWS: welcome page, 3D lab and classic workbench share one experiment
+// =====================================================================
+function setView(v) {
+  if (!S.demo) { $("welcomeMsg").textContent = "Still loading data from the AmpliBench server..."; return; }
+  const from = $("welcome").style.display === "none" ? S.view : null;
+  S.view = v;
+  $("welcome").style.display = "none";
+  document.body.classList.toggle("classic", v === "classic");
+  $("m3d").classList.toggle("on", v === "3d"); $("mClassic").classList.toggle("on", v === "classic");
+  if (v === "classic") {
+    // Fresh start straight into Classic: plan complete tubes. Otherwise show exactly what is in the tubes.
+    if (undoStack.index <= 0 && S.tubes.every(t => !t.volume)) S.tubes.forEach(t => setTubeFlags(t, { mix: true, fwd: true, rev: true, tpl: true }));
+    renderClassic();
+  } else {
+    const filled = S.tubes.filter(t => t.volume).length;
+    if (from === "classic" && filled) toast(`Same experiment as in Classic: ${filled} of ${S.tubes.length} tubes already hold a reaction. Use Discard tube or Clear all to pipette from scratch.`);
+    showLabLoading().then(() => { go(Math.min(S.step, S.reached)); maybeTour(); });
+  }
+}
+$("pick3d").onclick = () => setView("3d");
+$("pickClassic").onclick = () => setView("classic");
+$("m3d").onclick = () => { if (!S.busy) setView("3d"); };
+$("mClassic").onclick = () => { if (!S.busy) setView("classic"); };
+$("speedSel").onchange = (e) => { speed = +e.target.value; };
+$("cardToggle").onclick = () => {
+  const c = $("card").classList.toggle("collapsed");
+  $("cardToggle").textContent = c ? "+" : "-";
+};
+
+// --- tube contents from simple yes/no choices (classic view) ---
+function tubeFlags(t) {
+  return { mix: mixParts().every(k => t.added.has(k)),
+           fwd: [...t.added].some(k => k.startsWith("fwd:")), rev: [...t.added].some(k => k.startsWith("rev:")),
+           tpl: [...t.added].some(k => k.startsWith("tpl:")) };
+}
+function moveToHolder(i, holder) {      // one tube per holder: an occupied holder swaps the two tubes
+  holder = Math.max(1, Math.min(GRADIENT_WELLS, Math.round(+holder) || 1));
+  const t = S.tubes[i], other = S.tubes.find((u, j) => j !== i && u.well === holder);
+  if (other) { other.well = t.well; toast(`${other.name} moved to holder ${t.well} to make room.`); }
+  t.well = holder;
+}
+function setTubeFlags(t, f) {
+  if (!f.mix && !f.fwd && !f.rev && !f.tpl) { t.added = new Set(); t.volume = 0; refreshLiquid(t); return; }
+  const added = new Set(["water"]);
+  if (f.mix) mixParts().forEach(k => added.add(k));
+  if (f.fwd) added.add(`fwd:${t.pair}`);
+  if (f.rev) added.add(`rev:${t.pair}`);
+  added.add(f.tpl ? `tpl:${t.template}` : "ntc water");
+  t.added = added;
+  t.volume = [...added].reduce((a, k) => a + volumeOf(k), 0);
+  refreshLiquid(t);
+}
+
+// --- classic workbench ---
+let classicDrawing = false;
+function renderClassic() {
+  if (classicDrawing) { setTimeout(renderClassic, 0); return; }   // a blur-triggered change arrived mid-redraw
+  classicDrawing = true;
+  try { drawClassic(); } finally { classicDrawing = false; }
+}
+function drawClassic() {
+  const st = S.setup, p = S.program, g = S.gel, gradient = p.type === "Gradient";
+  if (gradient && !p.wells.length) fillGradient();
+  const opt = (list, v) => list.map(x => `<option ${x == v ? "selected" : ""}>${x}</option>`).join("");
+  const num = (id, v, step = 1, extra = "") => `<input data-c="${id}" type="number" step="${step}" value="${v}" ${extra}>`;
+  const ck = (on, i, f) => `<input type="checkbox" data-flag="${f}" data-i="${i}" ${on ? "checked" : ""} style="width:auto">`;
+  const vol = volumes(), stock = STOCKS();
+  const n = (pr) => S.tubes.filter(t => t.pair === pr).length;
+  const empty = S.tubes.filter(t => !t.volume).map(t => t.name);
+  const dup = gradient ? S.tubes.filter((t, i) => S.tubes.findIndex(u => u.well === t.well) !== i).map(t => t.name) : [];
+  const sec = (k, id, title, lead, body) => `<section class="cstep" id="cs_${id}">
+    <h3><span class="num">${k}</span>${title}</h3><p class="lead">${lead}</p>${body}</section>`;
+  const nav = [["tpl", "1. Templates"], ["pri", "2. Primers"], ["rx", "3. Reaction setup"], ["tubes", "4. Tubes"],
+               ["prog", "5. Thermocycler"], ["gel", "6. Run and gel"]];
+
+  $("classic").innerHTML = `<div class="wrap">
+  <div id="cnav"><b style="color:#1d3f6e;margin-right:6px">Classic workbench</b>
+    <span class="muted" style="font-size:12px;margin-left:auto;order:2">Same experiment as the 3D Lab</span>
+    ${nav.map(([id, l]) => `<a href="#" data-goto="cs_${id}">${l}</a>`).join("")}</div>
+
+  ${sec(1, "tpl", "Templates", "The DNA you want to amplify, as FASTA. Multi-FASTA files are fine.", `
+    <div class="btnrow" style="margin-top:0"><button data-act="demo">Load demo data</button></div>
+    <div class="grid3" style="margin-top:6px">
+      <div><label>Upload FASTA file(s)</label><input id="c_file" type="file" accept=".fa,.fasta,.fna,.txt" multiple></div>
+      <div style="grid-column:span 2"><label>Or paste FASTA</label><textarea id="c_paste" rows="2" placeholder=">my_gene&#10;ATGC..."></textarea></div>
+    </div>
+    <div class="btnrow"><button data-act="paste">Add pasted sequence</button></div>
+    ${Object.keys(S.templates).length ? `<table><tr><th>Template</th><th>Length</th><th>GC</th><th></th></tr>${Object.entries(S.templates).map(([k, v]) =>
+      `<tr><td>${k}</td><td>${v.length} bp</td><td>${(100 * (v.split("G").length + v.split("C").length - 2) / v.length).toFixed(1)}%</td>
+       <td style="width:40px"><button data-deltpl="${k}" style="padding:1px 6px">x</button></td></tr>`).join("")}</table>`
+      : `<div class="note">No templates yet.</div>`}`)}
+
+  ${sec(2, "pri", "Primer pairs", "Write both primers 5' to 3', as you would order them.", `
+    <table><tr><th>Pair</th><th>Forward (5'-3')</th><th>Reverse (5'-3')</th><th></th></tr>${Object.entries(S.pairs).map(([k, v]) =>
+      `<tr><td style="width:60px"><input data-pairname="${k}" value="${k}"></td>
+       <td><input data-pair="${k}" data-k="forward" value="${v.forward}"></td>
+       <td><input data-pair="${k}" data-k="reverse" value="${v.reverse}"></td>
+       <td style="width:40px"><button data-delpair="${k}" style="padding:1px 6px">x</button></td></tr>`).join("")}</table>
+    <div class="btnrow"><button data-act="addpair">+ Add pair</button></div>
+    <p class="muted" id="c_tm" style="margin:8px 0 0"></p>`)}
+
+  ${sec(3, "rx", "Reaction setup (per tube)", "Choose a ready 2X master mix or add each component yourself. Water makes up the rest.", `
+    <div class="grid3">
+      <div><label>Setup</label><select data-c="mode">${opt(["2X master mix", "Manual components"], st.mode)}</select></div>
+      <div><label>Reaction volume (uL)</label><select data-c="volume">${opt([10, 20, 25, 50], st.volume)}</select></div>
+      <div></div>
+      <div><label>Each primer (pmol)</label>${num("primerPmol", st.primerPmol, 0.5)}</div>
+      <div><label>Primer stock (pmol/uL)</label>${num("primerStock", st.primerStock)}</div>
+      <div></div>
+      <div><label>Template (uL)</label>${num("templateUl", st.templateUl, 0.5)}</div>
+      <div><label>Template (ng/uL)</label>${num("templateNg", st.templateNg)}</div>
+    </div>
+    <label style="margin-top:10px">${st.mode === "2X master mix" ? "Master mix" : "Components"} (uL per tube)</label>
+    <div class="grid4">${componentInputs("c")}</div>
+    <table style="margin-top:10px"><tr><th>Component</th><th>Stock</th><th>uL per tube</th></tr>
+      ${componentTypes().map(k => `<tr><td>${REAGENTS[k].label}</td><td>${stock[k]}</td><td>${vol[k].toFixed(2)}</td></tr>`).join("")}
+      <tr><td><b>Total</b></td><td></td><td><b>${st.volume.toFixed(2)}</b></td></tr></table>
+    <p class="muted" style="margin:8px 0 0">${finalConcentrations()}</p>
+    ${warningHtml()}
+    ${pairsInUse().length ? `<details><summary>Cocktail per primer pair (all tubes of the pair + 1 extra)</summary>
+      <table><tr><th>Component</th>${pairsInUse().map(pr => `<th>Pair ${pr}: ${n(pr)} + 1 tubes (uL)</th>`).join("")}</tr>
+      ${componentTypes().filter(k => k !== "template").map(k => `<tr><td>${REAGENTS[k].label}</td>${pairsInUse().map(pr =>
+        `<td>${(vol[k] * (n(pr) + 1)).toFixed(2)}</td>`).join("")}</tr>`).join("")}</table>
+      <p class="muted">Put ${(st.volume - vol.template).toFixed(2)} uL of cocktail in each tube, then ${vol.template} uL template (water for the NTC).</p></details>` : ""}`)}
+
+  ${sec(4, "tubes", "Tubes", `The thermocycler holds ${MAX_TUBES} tubes. Untick Template to make a no-template control (water goes in instead).`, `
+    <div class="grid3"><div><label>Number of tubes (1 to ${MAX_TUBES})</label>${num("ntubes", S.tubes.length, 1, `min="1" max="${MAX_TUBES}"`)}</div>
+      <div><label>&nbsp;</label><button data-act="fillall">Complete all tubes</button></div>
+      <div><label>&nbsp;</label><button data-act="emptyall">Empty all tubes</button></div></div>
+    <table style="margin-top:10px"><tr><th>Tube</th><th>Template</th><th>Primer pair</th>${gradient ? "<th>Holder (Ta)</th>" : ""}
+      <th>Mix</th><th>Fwd</th><th>Rev</th><th>Template</th><th>uL</th></tr>
+      ${S.tubes.map((t, i) => { const f = tubeFlags(t); return `<tr>
+        <td><input data-t="${i}" data-f="name" value="${t.name}" style="width:80px"></td>
+        <td><select data-t="${i}" data-f="template">${opt(Object.keys(S.templates), t.template)}</select></td>
+        <td><select data-t="${i}" data-f="pair">${opt(Object.keys(S.pairs), t.pair)}</select></td>
+        ${gradient ? `<td><input data-t="${i}" data-f="well" type="number" min="1" max="${GRADIENT_WELLS}" value="${t.well}" style="width:56px">
+          <span class="muted">${p.wells[t.well - 1]} C</span></td>` : ""}
+        <td>${ck(f.mix, i, "mix")}</td><td>${ck(f.fwd, i, "fwd")}</td><td>${ck(f.rev, i, "rev")}</td><td>${ck(f.tpl, i, "tpl")}</td>
+        <td>${t.volume.toFixed(1)}</td></tr>`; }).join("")}</table>
+    ${empty.length ? `<div class="note">${empty.join(", ")} ${empty.length > 1 ? "are" : "is"} empty. Tick what goes in, or press Complete all tubes.</div>` : ""}
+    ${dup.length ? `<div class="note err">Two tubes share a holder (${dup.join(", ")}). Each holder takes one tube.</div>` : ""}`)}
+
+  ${sec(5, "prog", "Thermocycler program", "Stage 2 repeats for every cycle. Gradient gives each of the 11 holders its own annealing temperature.", `
+    <div class="grid3"><div><label>PCR type</label><select data-c="type">${opt(["Conventional", "Gradient"], p.type)}</select></div></div>
+    <table class="prog" style="margin-top:8px"><tr><th>Step</th><th>Temp (C)</th><th>Time (s)</th><th>Cycles</th></tr>
+      <tr><td class="stage" colspan="4">Stage 1: start</td></tr>
+      <tr class="one"><td>Initial denaturation</td><td>${num("initT", p.initT)}</td><td>${num("initS", p.initS)}</td><td>1</td></tr>
+      <tr><td class="stage" colspan="4">Stage 2: amplification</td></tr>
+      <tr class="den"><td>Denaturation</td><td>${num("denT", p.denT)}</td><td>${num("denS", p.denS)}</td><td class="cyc" rowspan="3">x ${num("cycles", p.cycles)}</td></tr>
+      <tr class="ann"><td>Annealing</td><td>${gradient ? "gradient (below)" : num("annT", p.annT, 0.5)}</td><td>${num("annS", p.annS)}</td></tr>
+      <tr class="ext"><td>Extension</td><td>${num("extT", p.extT)}</td><td>${num("extS", p.extS)}</td></tr>
+      <tr><td class="stage" colspan="4">Stage 3: finish</td></tr>
+      <tr class="one"><td>Final extension</td><td>${p.extT}</td><td>${num("finS", p.finS)}</td><td>1</td></tr>
+      <tr class="one"><td>Hold</td><td>4</td><td>until removed</td><td>-</td></tr></table>
+    ${gradient ? `<div class="grid3" style="margin-top:8px"><div><label>Gradient low (C)</label>${num("gLow", p.gLow, 0.5)}</div>
+      <div><label>Gradient high (C)</label>${num("gHigh", p.gHigh, 0.5)}</div></div>
+      <table><tr><th>Holder</th>${p.wells.map((_, i) => `<th>${i + 1}</th>`).join("")}</tr>
+      <tr><td>Ta (C)</td>${p.wells.map((w, i) => `<td><input data-w="${i}" type="number" step="0.1" value="${w}" style="min-width:52px"></td>`).join("")}</tr>
+      <tr><td>Tube</td>${p.wells.map((_, i) => `<td class="muted">${S.tubes.filter(t => t.well === i + 1).map(t => t.name).join(", ") || "-"}</td>`).join("")}</tr></table>` : ""}
+    <canvas id="c_profile" width="760" height="200" style="width:100%;margin-top:8px"></canvas>
+    <p class="muted" style="margin:4px 0 0">About ${totalMinutes()} min in total. Extension of ${p.extS} s covers products up to about ${Math.round(p.extS / 60 * 1000)} bp.</p>`)}
+
+  ${sec(6, "gel", "Run and gel", "Run the PCR, then look at it on a gel. Gel settings can be changed after the run: the gel redraws.", `
+    <div class="grid3">
+      <div><label>Agarose (%)</label><select data-c="agarose">${opt([0.7, 0.8, 1.0, 1.2, 1.5, 2.0, 2.5, 3.0], g.agarose)}</select></div>
+      <div><label>Run time (min)</label><select data-c="runMinutes">${opt([10, 20, 30, 40, 50, 60, 75, 90], g.runMinutes)}</select></div>
+      <div><label>Load per well (uL)</label>${num("loadUl", g.loadUl, 1, `min="1" max="${st.volume}"`)}</div>
+      <div style="grid-column:span 2"><label>Ladder</label><select data-c="ladder">${opt(S.demo.ladders, g.ladder)}</select></div>
+      <div><label>Ladder position</label><select data-c="ladderPos"><option value="first" ${g.ladderPos === "first" ? "selected" : ""}>First well</option>
+        <option value="both" ${g.ladderPos === "both" ? "selected" : ""}>Both ends</option></select></div>
+    </div>
+    <div class="btnrow"><button class="primary" id="c_run">Run PCR and gel</button></div>
+    <div id="c_results" style="margin-top:12px"></div>`)}
+  </div>`;
+  drawProfile($("c_profile"));
+  if (S.gelData?.ok) showClassicResults();
+  fetch("/api/primers", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pairs: Object.fromEntries(Object.entries(S.pairs).filter(([, v]) => v.forward && v.reverse)), recipe: recipeJson() }) })
+    .then(r => r.ok ? r.json() : null).then(info => {
+      if (info && $("c_tm") && Object.keys(info).length) $("c_tm").innerHTML = "Suggested annealing temperature (lowest Tm - 3 C): " +
+        Object.entries(info).map(([k, v]) => `pair ${k} <b>${v.suggested_ta} C</b> (Tm ${v.tm_forward} / ${v.tm_reverse})`).join(", ");
+    }).catch(() => {});
+}
+function showClassicResults() {
+  const d = S.gelData;
+  $("c_results").innerHTML = `<table><tr><th>Tube</th><th>Ta</th><th>Amplified</th><th>Products (bp)</th><th>Dimer</th><th>Notes</th></tr>
+    ${d.results.map(r => `<tr><td>${r.tube}</td><td>${r.ta}</td><td><span class="tag ${r.amplified ? "yes" : "no"}">${r.amplified ? "Yes" : "No"}</span></td>
+      <td>${r.products.map(x => x.size + (x.specific ? "" : " (off-target)")).join(", ") || "-"}</td>
+      <td>${r.dimers.map(x => "~" + x).join(", ") || "-"}</td><td class="muted">${r.messages.join(" ")}</td></tr>`).join("")}</table>
+    <img style="width:100%;margin-top:10px;border-radius:6px" src="data:image/png;base64,${d.gel_png}">
+    ${d.notes.map(n => `<p class="muted">${n}</p>`).join("")}
+    <a download="amplibench_gel.png" href="data:image/png;base64,${d.gel_png}">Download gel image</a>`;
+}
+async function classicRun() {
+  $("c_run").disabled = true; $("c_run").textContent = "Running...";
+  const d = await postRun();
+  if ($("c_run")) { $("c_run").disabled = false; $("c_run").textContent = "Run PCR and gel"; }
+  if (!d.ok) { toast((d.errors || [d.detail]).join(" ")); return; }
+  S.pcr = d; S.gelData = d; S.loaded = d.gel_layout.wells.map(() => true);
+  S.reached = Math.max(S.reached, 4);
+  showClassicResults();
+}
+async function classicFasta(text) {
+  const r = await fetch("/api/fasta", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }) });
+  const d = await r.json();
+  if (!r.ok) { toast("FASTA problem: " + d.detail); return; }
+  Object.assign(S.templates, d.records); afterPlanChange(); renderClassic(); scheduleRecord();
+}
+function afterPlanChange() {          // keep tubes valid and the 3D bench in sync
+  const temps = Object.keys(S.templates), pairs = Object.keys(S.pairs);
+  S.tubes.forEach(t => {
+    if (!temps.includes(t.template)) t.template = temps[0];
+    if (!pairs.includes(t.pair)) t.pair = pairs[0];
+    setTubeFlags(t, tubeFlags(t));
+  });
+  S.cocktails = {}; buildReagents();
+}
+$("classic").addEventListener("click", (e) => {
+  const d = e.target.dataset;
+  if (d.goto) { e.preventDefault(); $(d.goto).scrollIntoView({ behavior: "smooth", block: "start" }); return; }
+  if (e.target.id === "c_run") classicRun();
+  if (d.act === "emptyall") { S.tubes.forEach(t => setTubeFlags(t, { mix: false, fwd: false, rev: false, tpl: false })); renderClassic(); }
+  if (d.act === "demo") { S.templates = { ...S.demo.templates }; S.pairs = structuredClone(S.demo.pairs); afterPlanChange(); renderClassic(); }
+  if (d.act === "paste" && $("c_paste").value.trim()) classicFasta($("c_paste").value);
+  if (d.act === "addpair") { let k = 1; while (S.pairs[`P${k}`]) k++; S.pairs[`P${k}`] = { forward: "", reverse: "" }; renderClassic(); }
+  if (d.act === "fillall") { S.tubes.forEach(t => setTubeFlags(t, { mix: true, fwd: true, rev: true, tpl: true })); renderClassic(); }
+  if (d.deltpl) { delete S.templates[d.deltpl]; afterPlanChange(); renderClassic(); }
+  if (d.delpair) { delete S.pairs[d.delpair]; afterPlanChange(); renderClassic(); }
+});
+$("classic").addEventListener("change", async (e) => {
+  const t = e.target, d = t.dataset;
+  if (t.id === "c_file") { for (const f of t.files) await classicFasta(await f.text()); return; }
+  if (d.c) {
+    const k = d.c, val = t.value;
+    if (k in S.setup) applySetupChange(k, val, true);
+    else if (k === "ntubes") { const old = S.tubes.map(x => ({ ...x, added: new Set(x.added) })); buildTubes(Math.max(1, Math.min(MAX_TUBES, +val || 1)));
+      S.tubes.forEach((x, i) => {
+        if (old[i]) { Object.assign(x, { name: old[i].name, template: old[i].template, pair: old[i].pair, well: old[i].well, added: old[i].added });
+                      relabelCap(x, i); x.volume = old[i].volume; refreshLiquid(x); }
+        else setTubeFlags(x, { mix: true, fwd: true, rev: true, tpl: true });
+      }); afterPlanChange(); }
+    else if (k in S.gel) { S.gel[k] = ["ladder", "ladderPos"].includes(k) ? val : +val;
+      if (S.gelData?.ok) { await classicRun(); return; } }
+    else { S.program[k] = k === "type" ? val : +val; if (k === "gLow" || k === "gHigh") fillGradient(); }
+    renderClassic(); return;
+  }
+  if (d.w) { S.program.wells[+d.w] = +t.value; renderClassic(); return; }
+  if (d.pairname) {
+    const name = t.value.trim();
+    if (!name || (name !== d.pairname && S.pairs[name])) { toast("Pair names must be unique."); renderClassic(); return; }
+    S.pairs = Object.fromEntries(Object.entries(S.pairs).map(([k, v]) => [k === d.pairname ? name : k, v]));
+    S.tubes.forEach(x => { if (x.pair === d.pairname) x.pair = name; });
+    afterPlanChange(); renderClassic(); return;
+  }
+  if (d.pair) {
+    const seq = t.value.toUpperCase().replace(/[^A-Z]/g, "");
+    if (!/^[ACGTN]*$/.test(seq)) { toast("Primers may only contain A, C, G, T or N."); return; }
+    S.pairs[d.pair][d.k] = seq; renderClassic(); return;
+  }
+  if (d.t !== undefined && d.f) {
+    const tube = S.tubes[+d.t], flags = tubeFlags(tube);
+    if (d.f === "well") moveToHolder(+d.t, t.value); else tube[d.f] = t.value;
+    if (d.f !== "name") { setTubeFlags(tube, flags); S.cocktails = {}; buildReagents(); }
+    renderClassic(); return;
+  }
+  if (d.flag) {
+    const tube = S.tubes[+d.i], flags = tubeFlags(tube);
+    flags[d.flag] = t.checked; setTubeFlags(tube, flags); renderClassic();
+  }
+});
+
+// =====================================================================
+// SAVE / OPEN / PROTOCOL
+// =====================================================================
+function experimentJson() {
+  return { app: "AmpliBench", version: 1, saved: new Date().toISOString(),
+           setup: S.setup, program: S.program, gel: S.gel, pipetMode: S.pipetMode,
+           templates: S.templates, pairs: S.pairs,
+           tubes: S.tubes.map(t => ({ name: t.name, template: t.template, pair: t.pair, well: t.well, added: [...t.added] })) };
+}
+$("btnSave").onclick = () => {
+  const blob = new Blob([JSON.stringify(experimentJson(), null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = `amplibench_experiment_${new Date().toISOString().slice(0, 10)}.json`;
+  a.click(); URL.revokeObjectURL(a.href);
+};
+$("btnLoad").onclick = () => $("loadFile").click();
+$("loadFile").onchange = async (e) => {
+  const f = e.target.files[0]; e.target.value = "";
+  if (!f) return;
+  try {
+    const x = JSON.parse(await f.text());
+    if (x.app !== "AmpliBench") throw new Error("not an AmpliBench file");
+    applyExperiment(x);
+    S.reached = 0; S.step = 0;
+    toast(`Opened ${f.name}`);
+    setView(S.view || "3d");
+    scheduleRecord();
+  } catch (err) { toast("Could not open this file: " + err.message); }
+};
+// Put a saved experiment (file, undo step or blank) back on the bench
+function applyExperiment(x) {
+  Object.assign(S.setup, x.setup); Object.assign(S.program, structuredClone(x.program)); Object.assign(S.gel, x.gel);
+  S.pipetMode = x.pipetMode || "components";
+  S.templates = { ...x.templates }; S.pairs = structuredClone(x.pairs);
+  buildTubes(x.tubes.length);
+  x.tubes.forEach((src, i) => {
+    const t = S.tubes[i];
+    Object.assign(t, { name: src.name, template: src.template, pair: src.pair, well: src.well, added: new Set(src.added) });
+    relabelCap(t, i);
+    t.volume = [...t.added].reduce((a, k) => a + volumeOf(k), 0); refreshLiquid(t);
+  });
+  S.cocktails = {}; S.pcr = null; S.gelData = null; S.loaded = [];
+  S.reached = Math.min(S.reached, 3); S.step = Math.min(S.step, 3);
+  buildReagents(); drawGel(0); drawScreen();
+}
+function refreshView(rerun) {
+  if (S.view === "classic") { renderClassic(); if (rerun && !experimentProblems().length) classicRun(); }
+  else if ($("welcome").style.display === "none") go(Math.min(S.step, S.reached));
+}
+
+// ---- undo / redo: snapshots of the experiment after every change ----
+const undoStack = { list: [], index: -1, applying: false };
+function snapshot() { const x = experimentJson(); delete x.saved; return JSON.stringify(x); }
+function recordHistory() {
+  if (undoStack.applying || !S.demo) return;
+  if (S.busy) { setTimeout(recordHistory, 400); return; }          // wait until an animation has finished
+  const snap = snapshot();
+  if (snap === undoStack.list[undoStack.index]) return;           // nothing changed
+  undoStack.list = undoStack.list.slice(0, undoStack.index + 1);  // a new change removes the redo steps
+  undoStack.list.push(snap);
+  if (undoStack.list.length > 60) undoStack.list.shift();
+  undoStack.index = undoStack.list.length - 1;
+  updateUndoButtons();
+}
+let recordTimer;
+function scheduleRecord() { clearTimeout(recordTimer); recordTimer = setTimeout(recordHistory, 300); }
+document.addEventListener("change", scheduleRecord, true);
+document.addEventListener("click", scheduleRecord, true);
+function updateUndoButtons() {
+  $("btnUndo").disabled = undoStack.index <= 0;
+  $("btnRedo").disabled = undoStack.index >= undoStack.list.length - 1;
+}
+function restoreFrom(index) {
+  if (S.busy || index < 0 || index >= undoStack.list.length) return;
+  const hadResults = !!S.gelData?.ok;
+  undoStack.applying = true;
+  undoStack.index = index;
+  applyExperiment(JSON.parse(undoStack.list[index]));
+  undoStack.applying = false;
+  updateUndoButtons();
+  refreshView(hadResults);
+}
+$("btnUndo").onclick = () => restoreFrom(undoStack.index - 1);
+$("btnRedo").onclick = () => restoreFrom(undoStack.index + 1);
+document.addEventListener("keydown", (e) => {
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;   // let text boxes undo their own typing
+  const k = e.key.toLowerCase();
+  if (k === "z" && !e.shiftKey) { e.preventDefault(); restoreFrom(undoStack.index - 1); }
+  else if (k === "y" || (k === "z" && e.shiftKey)) { e.preventDefault(); restoreFrom(undoStack.index + 1); }
+});
+
+// ---- clear all: a new, empty experiment (can be undone) ----
+function blankExperiment() {
+  return { app: "AmpliBench", setup: structuredClone(DEFAULT_SETUP), program: structuredClone(DEFAULT_PROGRAM),
+           gel: { ...DEFAULT_GEL, ladder: S.demo.ladders[0] }, pipetMode: "components",
+           templates: {}, pairs: { P1: { forward: "", reverse: "" } },
+           tubes: [{ name: "S1", pair: "P1", well: 1, added: [] }] };
+}
+$("btnClear").onclick = () => {
+  if (S.busy || !S.demo) return;
+  if (!confirm("Clear everything: templates, primers, tubes and settings? You can undo this.")) return;
+  applyExperiment(blankExperiment());
+  S.reached = 0; S.step = 0;
+  refreshView(false);
+  scheduleRecord();
+};
+
+$("btnProtocol").onclick = async () => {
+  let tm = {};
+  try { tm = await fetch("/api/primers", { method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pairs: S.pairs, recipe: recipeJson() }) }).then(r => r.json()); } catch {}
+  const vol = volumes(), p = S.program, g = S.gel, r = recipeJson();
+  const n = (pair) => S.tubes.filter(t => t.pair === pair).length;
+  const contents = (t) => [...t.added].map(labelOf).join(", ") || "empty";
+  const wellsOrder = ["Ladder", ...S.tubes.map(t => t.name), ...(g.ladderPos === "both" ? ["Ladder"] : [])];
+  const res = S.gelData?.ok ? S.gelData : null;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><title>AmpliBench protocol</title>
+  <style>body{font-family:system-ui,Segoe UI,sans-serif;color:#1b2330;max-width:900px;margin:24px auto;padding:0 16px;font-size:13px}
+  h1{color:#1d3f6e;margin:0}h2{color:#1d3f6e;font-size:15px;border-bottom:2px solid #dde2e8;padding-bottom:4px;margin-top:22px}
+  table{border-collapse:collapse;width:100%;margin-top:6px}td,th{border:1px solid #dde2e8;padding:4px 6px;text-align:left}
+  th{background:#eef3f9}.muted{color:#5f6b7a}code{font-size:12px}img{max-width:100%}
+  @media print{button{display:none}}</style></head><body>
+  <button onclick="print()" style="float:right">Print / save as PDF</button>
+  <h1>AmpliBench protocol</h1><div class="muted">${new Date().toLocaleString()} &middot; simulated plan; confirm experimentally</div>
+  <h2>Templates</h2><table><tr><th>Name</th><th>Length (bp)</th></tr>${templatesInUse().map(k => `<tr><td>${k}</td><td>${S.templates[k].length}</td></tr>`).join("")}</table>
+  <h2>Primers</h2><table><tr><th>Pair</th><th>Forward (5'-3')</th><th>Reverse (5'-3')</th><th>Tm F / R (C)</th><th>Suggested Ta</th></tr>
+    ${pairsInUse().map(k => `<tr><td>${k}</td><td><code>${S.pairs[k].forward}</code></td><td><code>${S.pairs[k].reverse}</code></td>
+      <td>${tm[k] ? `${tm[k].tm_forward} / ${tm[k].tm_reverse}` : "-"}</td><td>${tm[k]?.suggested_ta ?? "-"}</td></tr>`).join("")}</table>
+  <h2>Reaction setup (${r.mode}, ${r.reaction_volume_ul} uL per tube)</h2>
+  <table><tr><th>Component</th><th>Per tube (uL)</th>${pairsInUse().map(k => `<th>Cocktail ${k}: ${n(k)} + 1 tubes (uL)</th>`).join("")}</tr>
+    ${componentTypes().map(k => `<tr><td>${REAGENTS[k].label}</td><td>${vol[k].toFixed(2)}</td>${pairsInUse().map(pr =>
+      `<td>${k === "template" ? "add to each tube" : (vol[k] * (n(pr) + 1)).toFixed(2)}</td>`).join("")}</tr>`).join("")}</table>
+  <p class="muted">Primers: ${r.primer_pmol} pmol each per tube from ${r.primer_stock_pmol_per_ul} pmol/uL stock. Template: ${r.template_ul} uL at ${r.template_ng_per_ul} ng/uL.
+    Put cocktail in each tube, then template (water for NTC).</p>
+  <h2>Tubes</h2><table><tr><th>Tube</th><th>Template</th><th>Pair</th>${p.type === "Gradient" ? "<th>Gradient well (Ta)</th>" : ""}<th>Contents</th></tr>
+    ${S.tubes.map(t => `<tr><td>${t.name}</td><td>${t.template}</td><td>${t.pair}</td>${p.type === "Gradient" ? `<td>${t.well} (${p.wells[t.well - 1]} C)</td>` : ""}<td>${contents(t)}</td></tr>`).join("")}</table>
+  <h2>Thermocycler program (${p.type})</h2>
+  <table><tr><th>Step</th><th>Temp (C)</th><th>Time</th><th>Cycles</th></tr>
+    <tr><td>Initial denaturation</td><td>${p.initT}</td><td>${p.initS} s</td><td>1</td></tr>
+    <tr><td>Denaturation</td><td>${p.denT}</td><td>${p.denS} s</td><td rowspan="3">${p.cycles}</td></tr>
+    <tr><td>Annealing</td><td>${p.type === "Gradient" ? `${Math.min(...p.wells)}-${Math.max(...p.wells)} (gradient)` : p.annT}</td><td>${p.annS} s</td></tr>
+    <tr><td>Extension</td><td>${p.extT}</td><td>${p.extS} s</td></tr>
+    <tr><td>Final extension</td><td>${p.extT}</td><td>${p.finS} s</td><td>1</td></tr>
+    <tr><td>Hold</td><td>4</td><td>until removed</td><td>-</td></tr></table>
+  <p class="muted">About ${totalMinutes()} min (excluding ramp time).</p>
+  <h2>Gel</h2><p>${g.agarose}% agarose, ${g.runMinutes} min at about 100 V, ${g.loadUl} uL per well, ladder: ${g.ladder}.</p>
+  <table><tr><th>Well</th>${wellsOrder.map((_, i) => `<th>${i + 1}</th>`).join("")}</tr><tr><td>Load</td>${wellsOrder.map(w => `<td>${w}</td>`).join("")}</tr></table>
+  ${res ? `<h2>Simulated result</h2><table><tr><th>Tube</th><th>Expected products (bp)</th><th>Primer dimer</th></tr>
+    ${res.results.map(x => `<tr><td>${x.tube}</td><td>${x.products.map(q => q.size + (q.specific ? "" : " (off-target)")).join(", ") || "none"}</td>
+      <td>${x.dimers.length ? "possible" : "-"}</td></tr>`).join("")}</table>
+    <img src="data:image/png;base64,${res.gel_png}">` : ""}
+  <p class="muted">Generated by AmpliBench. Rule-based simulation; it does not guarantee wet-lab results.</p></body></html>`;
+  const w = window.open("", "_blank");
+  if (!w) { toast("Allow pop-ups to open the protocol sheet."); return; }
+  w.document.write(html); w.document.close();
+};
+
+// side panel visibility, resize by dragging, fit to content
+new MutationObserver(() => { $("sideWrap").style.display = $("side").innerHTML.trim() ? "flex" : "none"; })
+  .observe($("side"), { childList: true });
+{
+  let dragging = false;
+  $("sideHandle").onpointerdown = (e) => { dragging = true; e.target.setPointerCapture(e.pointerId); };
+  $("sideHandle").onpointerup = () => { dragging = false; };
+  $("sideHandle").onpointermove = (e) => {
+    if (dragging) $("sideWrap").style.width = `${Math.max(280, Math.min(innerWidth * 0.85, innerWidth - e.clientX - 16))}px`;
+  };
+  $("sb_narrow").onclick = () => { $("sideWrap").style.width = "380px"; };
+  $("sb_wide").onclick = () => { $("sideWrap").style.width = `${Math.round(innerWidth * 0.6)}px`; };
+  $("sb_fit").onclick = () => {
+    const widest = Math.max(...[...$("side").querySelectorAll("table, .box")].map(t => t.scrollWidth), 300);
+    $("sideWrap").style.width = `${Math.min(innerWidth * 0.85, widest + 60)}px`;
+  };
+  $("sb_hide").onclick = () => {
+    const c = $("sideWrap").classList.toggle("collapsed");
+    $("sb_hide").textContent = c ? "Show panel" : "Hide";
+  };
+}
+
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toastTimer); toastTimer = setTimeout(() => t.style.display = "none", 3200); }
+
+function resetAll() {
+  $("results").style.display = "none";
+  sun.intensity = 1.6; hemi.intensity = 0.7; scene.background.setHex(0xd9e1ea);
+  S.pcr = null; S.gelData = null; S.loaded = []; S.reached = 0; S.cocktails = {};
+  buildTubes(S.tubes.length || 4); buildReagents(); refillTips();
+  lidHinge.rotation.x = -1.95; tcLed.material.color.setHex(0x30c060);
+  drawGel(0); drawPowerSupply(0, S.gel.runMinutes); drawScreen();
+  go(0);
+}
+
+// ---- first-time tour of the 3D lab ----
+const TOUR = [
+  { el: "steps", title: "Your experiment, step by step",
+    text: "These tabs follow a real PCR: set up, pipette, program, run, then the gel. Click any step you have reached to go back and change it." },
+  { el: "card", title: "The guide",
+    text: "This card always tells you what to do now, with the buttons for this step. Collapse it with the minus button if you want more space." },
+  { el: "view", title: "The bench",
+    text: "Drag to look around, scroll to zoom. Hover over anything to see what it is. Things that glow are what to click next, and clicking a machine (thermocycler, gel tank, power supply) takes you to it or starts it." },
+  { el: "sideWrap", title: "Settings and checklists",
+    text: "Forms, tables and results for the current step appear here. Drag its left edge to resize, or use Fit, Wide, Narrow and Hide." },
+  { el: "viewTools", title: "View controls",
+    text: "Fit bench shows the whole setup, Current station brings you back, Top view looks from above." },
+  { el: "hdrTools", title: "Save your work",
+    text: "Animation speed, Save and Open an experiment, and a printable Protocol sheet for the lab. Switch to the Classic view at any time; your experiment stays the same." },
+];
+let tourIndex = -1;
+function showTourStep() {
+  document.querySelectorAll(".tourHi").forEach(e => e.classList.remove("tourHi"));
+  if (tourIndex < 0 || tourIndex >= TOUR.length) {
+    $("tour").style.display = "none";
+    try { localStorage.setItem("amplibench_tour_done", "1"); } catch {}
+    return;
+  }
+  const t = TOUR[tourIndex], target = $(t.el), box = $("tour");
+  $("tourTitle").textContent = t.title; $("tourText").textContent = t.text;
+  $("tourCount").textContent = `${tourIndex + 1} / ${TOUR.length}`;
+  $("tourNext").textContent = tourIndex === TOUR.length - 1 ? "Done" : "Next";
+  box.style.display = "block";
+  const r = target && target.offsetParent !== null ? target.getBoundingClientRect() : null;
+  if (r && t.el !== "view") target.classList.add("tourHi");
+  let left = innerWidth / 2 - 150, top = innerHeight / 2 - 80;         // default: centre of the bench
+  if (r && t.el !== "view") {
+    left = Math.min(innerWidth - 316, Math.max(16, r.left + r.width / 2 - 150));
+    top = r.bottom + 12 + 170 < innerHeight ? r.bottom + 12 : Math.max(70, r.top - 190);
+    if (t.el === "card") { left = r.right + 14; top = r.top; }
+    if (t.el === "sideWrap") { left = Math.max(16, r.left - 316); top = r.top + 20; }
+  }
+  box.style.left = `${left}px`; box.style.top = `${top}px`;
+}
+function startTour() { tourIndex = 0; showTourStep(); }
+$("tourNext").onclick = () => { tourIndex++; showTourStep(); };
+$("tourSkip").onclick = () => { tourIndex = -1; showTourStep(); };
+$("btnTour").onclick = () => { if (S.view === "classic") setView("3d"); setTimeout(startTour, 400); };
+function maybeTour() {
+  let done = false;
+  try { done = localStorage.getItem("amplibench_tour_done") === "1"; } catch {}
+  if (!done) setTimeout(startTour, 900);
+}
+
+// ---- loading screen while the 3D lab is prepared the first time ----
+let labReady = false;
+async function showLabLoading() {
+  if (labReady) return;
+  $("loading").style.display = "flex";
+  // let the browser paint the loading screen, then render a few frames (shaders compile here)
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  renderer.compile(scene, camera);
+  for (let i = 0; i < 3; i++) await new Promise(r => requestAnimationFrame(r));
+  $("loading").style.display = "none";
+  labReady = true;
+}
+
+// ---- 3D view controls ----
+const STEP_VIEWS = ["overview", "bench", "cycler", "cycler", "gel", "gel", "gel", "gel"];
+function benchBox() {                  // everything on the bench except the bench top and mat
+  const box = new THREE.Box3();
+  scene.children.forEach(o => { if (o !== bench && o !== mat && (o.isMesh || o.isGroup)) box.expandByObject(o); });
+  return box;
+}
+function fitBench(ms = 900) {
+  const box = benchBox(), size = box.getSize(new THREE.Vector3()), centre = box.getCenter(new THREE.Vector3());
+  const free = freeArea(), aspect = free.w / free.h;
+  const vfov = THREE.MathUtils.degToRad(camera.fov);
+  const hfov = 2 * Math.atan(Math.tan(vfov / 2) * aspect);
+  const dist = 1.15 * Math.max(size.z / 2 / Math.tan(vfov / 2), size.x / 2 / Math.tan(hfov / 2)) + size.y;
+  const dir = new THREE.Vector3(0, 0.75, 0.66).normalize();
+  return flyTo(centre.clone().addScaledVector(dir, dist), centre, ms);
+}
+function zoom(factor) {
+  const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor);
+  tween(camera, "position", controls.target.clone().add(offset), 300);
+}
+$("vFit").onclick = () => fitBench();
+$("vStation").onclick = () => flyTo(...VIEWS[STEP_VIEWS[S.step]]);
+$("vTop").onclick = () => { const c = benchBox().getCenter(new THREE.Vector3()); flyTo(new THREE.Vector3(c.x, 95, c.z + 0.1), c); };
+$("vIn").onclick = () => zoom(0.8);
+$("vOut").onclick = () => zoom(1.25);
+
+// Keep the scene centred in the space between the guide card and the side panel
+function freeArea() {
+  const W = view.clientWidth, H = view.clientHeight;
+  const left = $("card").getBoundingClientRect().right;
+  const sw = $("sideWrap"), right = sw.style.display === "flex" ? innerWidth - sw.getBoundingClientRect().left : 0;
+  return { left: Math.max(0, left), right: Math.max(0, right), w: Math.max(200, W - left - right), h: H };
+}
+let lastOffset = null;
+function updateViewOffset() {
+  const f = freeArea(), W = view.clientWidth, H = view.clientHeight;
+  const shift = Math.round((f.right - f.left) / 2);
+  if (shift === lastOffset) return;
+  lastOffset = shift;
+  camera.setViewOffset(W, H, shift, 0, W, H);
+}
+
+function resize() {
+  const w = view.clientWidth, h = view.clientHeight;      // the 3D area sits below the header
+  renderer.setSize(w, h); camera.aspect = w / h; camera.updateProjectionMatrix();
+  lastOffset = null;                                     // recompute the centring offset
+}
+addEventListener("resize", resize);
+function loop(now) { updateViewOffset(); stepTweens(now); stepBubbles(now); pulse(now); controls.update(); renderer.render(scene, camera); requestAnimationFrame(loop); }
+
+(async function start() {
+  resize(); requestAnimationFrame(loop);
+  try { S.demo = await fetch("/api/demo").then(r => r.json()); }
+  catch {
+    $("welcomeMsg").innerHTML = "Cannot reach the AmpliBench server. Start it with <code>python -m uvicorn api:app --reload</code> and reload this page.";
+    $("welcomeMsg").style.color = "var(--err)";
+    return;
+  }
+  S.gel.ladder = S.demo.ladders[0];
+  S.templates = { ...S.demo.templates };
+  S.pairs = structuredClone(S.demo.pairs);
+  S.view = "3d";
+  $("welcomeMsg").textContent = "Ready. Choose how you want to work.";
+  fillGradient();
+  buildTubes(4);
+  resetAll();
+  undoStack.list = [snapshot()]; undoStack.index = 0; updateUndoButtons();
+})();
+</script>
+</body>
+</html>
